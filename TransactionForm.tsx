@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Transaction, TransactionType, Account } from '../types';
 
@@ -8,7 +9,7 @@ interface SavePayload {
     updateScope?: 'single' | 'future';
 }
 
-interface TransactionFormProps {
+interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (payload: SavePayload) => void;
@@ -17,7 +18,14 @@ interface TransactionFormProps {
   transactions: Transaction[];
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ isOpen, onClose, onSave, transactionToEdit, accounts, transactions }) => {
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
+
+const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, onSave, transactionToEdit, accounts, transactions }) => {
   const getInitialState = (): Omit<Transaction, 'id'> => ({
     date: new Date().toISOString().split('T')[0],
     type: TransactionType.SAIDA,
@@ -89,7 +97,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ isOpen, onClose, onSa
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload: SavePayload = {
-      transaction: { ...transaction, id: transactionToEdit?.id || crypto.randomUUID() },
+      transaction: { ...transaction, id: transactionToEdit?.id || generateId() },
       updateScope: isEditingInstallment ? updateScope : undefined,
       installmentsCount: installmentsCount,
       firstInstallmentDate: firstInstallmentDate,
@@ -208,4 +216,4 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ isOpen, onClose, onSa
   );
 };
 
-export default TransactionForm;
+export default TransactionModal;
