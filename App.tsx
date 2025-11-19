@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import TransactionForm from './components/TransactionForm';
+import TransactionModal from './components/TransactionModal';
 import { AIAssistant } from './components/AIAssistant';
 import TransactionFilter from './components/TransactionFilter';
 import RecurringTransactionsModal from './components/RecurringTransactionsModal';
@@ -32,6 +32,14 @@ interface SavePayload {
     firstInstallmentDate?: string;
     updateScope?: 'single' | 'future';
 }
+
+// Helper para gerar UUID seguro mesmo em HTTP (para testes mobile)
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 const initialAccounts: Account[] = [
     // Despesas
@@ -304,11 +312,11 @@ const App: React.FC = () => {
 
                     // 3. Create new records
                     if (installmentsCount > 1) {
-                        const newSeriesId = originalSeriesId || crypto.randomUUID();
+                        const newSeriesId = originalSeriesId || generateId();
                         for (let i = 0; i < installmentsCount; i++) {
                             const installmentDate = new Date(startDate);
                             installmentDate.setMonth(startDate.getMonth() + i);
-                            const newId = crypto.randomUUID();
+                            const newId = generateId();
                             const newTrans = {
                                 ...transaction,
                                 id: newId,
@@ -371,12 +379,12 @@ const App: React.FC = () => {
                 // CREATE LOGIC
                 if (installmentsCount > 1) {
                     const startDate = new Date((firstInstallmentDate || transaction.date) + 'T00:00:00');
-                    const seriesId = crypto.randomUUID();
+                    const seriesId = generateId();
 
                     for (let i = 0; i < installmentsCount; i++) {
                         const installmentDate = new Date(startDate);
                         installmentDate.setMonth(startDate.getMonth() + i);
-                        const newId = crypto.randomUUID();
+                        const newId = generateId();
                         
                         const newTrans = {
                             ...transaction,
@@ -389,7 +397,7 @@ const App: React.FC = () => {
                         batch.set(doc(db, 'transactions', newId), newTrans);
                     }
                 } else {
-                    const newId = crypto.randomUUID();
+                    const newId = generateId();
                     batch.set(doc(db, 'transactions', newId), { ...transaction, id: newId, userId: user.uid });
                 }
             }
@@ -418,7 +426,7 @@ const App: React.FC = () => {
             if (transactionDate.getMonth() === month - 1) {
                  const signature = `${rt.dayOfMonth}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
                  if (!existingSignatures.has(signature)) {
-                    const newId = crypto.randomUUID();
+                    const newId = generateId();
                     const newTrans = {
                         id: newId,
                         date: transactionDate.toISOString().split('T')[0],
@@ -448,7 +456,7 @@ const App: React.FC = () => {
 
     const handleAIParsedTransaction = async (parsedData: Partial<Transaction>) => {
         if (!user) return;
-        const newId = crypto.randomUUID();
+        const newId = generateId();
         const fullTransaction: Transaction = {
             id: newId,
             date: parsedData.date || new Date().toISOString().split('T')[0],
@@ -476,7 +484,7 @@ const App: React.FC = () => {
     const handleSaveRecurring = async (transaction: RecurringTransaction) => {
         if (!user) return;
         try {
-            const id = transaction.id || crypto.randomUUID();
+            const id = transaction.id || generateId();
             await setDoc(doc(db, 'recurring_transactions', id), { ...transaction, id, userId: user.uid });
         } catch (e) {
             console.error(e);
@@ -626,7 +634,7 @@ const App: React.FC = () => {
                  <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
                 {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
             </main>
-            <TransactionForm
+            <TransactionModal
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSave={handleSaveTransaction}
