@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import TransactionModal from './components/TransactionModal';
+import TransactionForm from './components/TransactionForm';
 import { AIAssistant } from './components/AIAssistant';
 import TransactionFilter from './components/TransactionFilter';
 import RecurringTransactionsModal from './components/RecurringTransactionsModal';
@@ -634,7 +634,7 @@ const App: React.FC = () => {
                  <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
                 {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
             </main>
-            <TransactionModal
+            <TransactionForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSave={handleSaveTransaction}
