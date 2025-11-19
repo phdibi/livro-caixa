@@ -1,0 +1,7 @@
+{
+  "name": "Livro Caixa Inteligente",
+  "description": "Um aplicativo de livro caixa moderno que permite registrar transações financeiras através de comandos de voz, com a inteligência do Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
