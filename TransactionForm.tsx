@@ -9,7 +9,7 @@ interface SavePayload {
     updateScope?: 'single' | 'future';
 }
 
-interface TransactionModalProps {
+interface TransactionFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (payload: SavePayload) => void;
@@ -25,7 +25,7 @@ const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, onSave, transactionToEdit, accounts, transactions }) => {
+const TransactionForm: React.FC<TransactionFormProps> = ({ isOpen, onClose, onSave, transactionToEdit, accounts, transactions }) => {
   const getInitialState = (): Omit<Transaction, 'id'> => ({
     date: new Date().toISOString().split('T')[0],
     type: TransactionType.SAIDA,
@@ -216,4 +216,4 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   );
 };
 
-export default TransactionModal;
+export default TransactionForm;
