@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { RecurringTransaction, TransactionType, Account } from '../types';
 
@@ -7,6 +8,13 @@ interface RecurringTransactionFormProps {
     accounts: Account[];
     transactionToEdit?: RecurringTransaction | null;
 }
+
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 const RecurringTransactionForm: React.FC<RecurringTransactionFormProps> = ({ onSave, onClose, accounts, transactionToEdit }) => {
     const getInitialState = (): Omit<RecurringTransaction, 'id'> => ({
@@ -52,7 +60,7 @@ const RecurringTransactionForm: React.FC<RecurringTransactionFormProps> = ({ onS
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave({ ...transaction, id: transactionToEdit?.id || crypto.randomUUID() });
+        onSave({ ...transaction, id: transactionToEdit?.id || generateId() });
         onClose();
     };
 
