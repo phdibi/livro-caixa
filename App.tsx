@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
 import TransactionForm from './components/TransactionForm';
