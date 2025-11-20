@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import TransactionForm from './components/TransactionForm';
-import { AIAssistant } from './components/AIAssistant';
+import EntryForm from './components/EntryForm';
+import { GeminiAssistant } from './components/GeminiAssistant';
 import TransactionFilter from './components/TransactionFilter';
 import RecurringTransactionsModal from './components/RecurringTransactionsModal';
 import CustomChartView from './components/CustomChartView';
@@ -633,7 +634,7 @@ const App: React.FC = () => {
                  <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
                 {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
             </main>
-            <TransactionForm
+            <EntryForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSave={handleSaveTransaction}
@@ -680,7 +681,7 @@ const App: React.FC = () => {
                 onClose={() => setIsExportModalOpen(false)}
                 transactions={filteredTransactions}
             />
-            <AIAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
+            <GeminiAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
         </div>
     );
 };
