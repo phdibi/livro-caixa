@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import EntryForm from './components/EntryForm';
-import { GeminiAssistant } from './components/GeminiAssistant';
+import TransactionForm from './components/TransactionForm';
+import { AiAssistant } from './components/AiAssistant';
 import TransactionFilter from './components/TransactionFilter';
 import RecurringTransactionsModal from './components/RecurringTransactionsModal';
 import CustomChartView from './components/CustomChartView';
@@ -332,8 +332,7 @@ const App: React.FC = () => {
                          const newTrans = {
                             ...transaction,
                             id: transactionToEdit.id, // Keep original ID for single
-                            seriesId: undefined, // Remove series ID explicitly (actually just undefined field won't save to firestore unless we delete the field, but here we are overwriting or creating new doc. Since we deleted the old one above, we are creating fresh).
-                            // Actually, since we deleted transactionToEdit in the "transactionsToDelete" block, we can recreate it with the same ID.
+                            seriesId: undefined, // Remove series ID explicitly
                             date: startDate.toISOString().split('T')[0],
                             description: baseDescription,
                             userId: user.uid
@@ -499,17 +498,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Wrappers to adapt the new logic to the existing component props
-    const setRecurringTransactionsWrapper = (
-        action: React.SetStateAction<RecurringTransaction[]>
-    ) => {
-        // Since we are using onSnapshot, we don't need to manually update state here for simple adds/removes
-        // But the Modal expects a setter or direct list manipulation.
-        // We will change the Modal to take callbacks for add/delete instead of setRecurringTransactions
-        // OR we modify the logic inside the modal. 
-        // To keep it simple: We pass custom handlers to the Modal's props in the JSX below.
-    };
-
     const sortedTransactions = useMemo(() => {
       return [...filteredTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [filteredTransactions]);
@@ -634,7 +622,7 @@ const App: React.FC = () => {
                  <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
                 {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
             </main>
-            <EntryForm
+            <TransactionForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSave={handleSaveTransaction}
@@ -642,30 +630,6 @@ const App: React.FC = () => {
                 accounts={accounts}
                 transactions={transactions}
             />
-            <RecurringTransactionsModal
-                isOpen={isRecurringModalOpen}
-                onClose={() => setIsRecurringModalOpen(false)}
-                accounts={accounts}
-                recurringTransactions={recurringTransactions}
-                setRecurringTransactions={(newVal) => {
-                    // This is a hack to keep the prop types happy, 
-                    // but in reality we handle updates inside the modal via handlers below, 
-                    // and the data comes back via onSnapshot.
-                    if (Array.isArray(newVal)) {
-                        // Logic to detect change (add/remove) based on diff is too complex here.
-                        // We rely on the modal calling individual save/delete handlers if we could pass them,
-                        // BUT the modal is built to manage local state.
-                        // IMPROVEMENT: Pass a direct 'onSave' prop to RecurringTransactionsModal that handles DB logic
-                    }
-                }}
-                // We need to modify RecurringTransactionsModal to accept specific Save/Delete handlers 
-                // or we hack it by patching the Modal component to use these DB functions.
-                // For now, I will modify RecurringTransactionsModal in the XML below to accept these override handlers if possible, 
-                // or just intercept the actions.
-                // Actually, the best way is to change the Modal to use the props for saving.
-            />
-            {/* FIX: To properly handle recurring transactions db sync without rewriting the modal entirely, 
-                I'm injecting a modification to RecurringTransactionsModal below. */}
             <ModifiedRecurringModalWrapper 
                 isOpen={isRecurringModalOpen}
                 onClose={() => setIsRecurringModalOpen(false)}
@@ -681,25 +645,22 @@ const App: React.FC = () => {
                 onClose={() => setIsExportModalOpen(false)}
                 transactions={filteredTransactions}
             />
-            <GeminiAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
+            <AiAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
         </div>
     );
 };
 
 // Helper component to bridge the old Modal interface with new DB handlers
 const ModifiedRecurringModalWrapper: React.FC<any> = ({ isOpen, onClose, accounts, recurringTransactions, onSave, onDelete, onGenerate }) => {
-    // We import the modal but we need to change how it saves.
-    // Since I cannot easily change the internal logic of RecurringTransactionsModal from here without changing its file,
-    // I will update RecurringTransactionsModal file as well to accept onSaveItem and onDeleteItem props.
     return (
         <RecurringTransactionsModal 
             isOpen={isOpen}
             onClose={onClose}
             accounts={accounts}
             recurringTransactions={recurringTransactions}
-            setRecurringTransactions={() => {}} // No-op, we use specific handlers
+            setRecurringTransactions={() => {}} 
             onGenerate={onGenerate}
-            // @ts-ignore - we are adding these props in the file modification below
+            // @ts-ignore 
             onSaveItem={onSave}
             onDeleteItem={onDelete}
         />
