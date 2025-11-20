@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType } from '../types';
 
@@ -13,7 +12,7 @@ const transactionSchema = {
   properties: {
     date: { 
       type: Type.STRING, 
-      description: "A data da transação no formato AAAA-MM-DD. Se o dia не for especificado, use o dia de hoje. Se o mês não for especificado, use o mês atual. Se o ano não for especificado, use o ano atual.",
+      description: "A data da transação no formato AAAA-MM-DD. Se o dia não for especificado, use o dia de hoje. Se o mês não for especificado, use o mês atual. Se o ano não for especificado, use o ano atual.",
     },
     type: { 
       type: Type.STRING, 
@@ -68,7 +67,8 @@ export const parseTransactionFromText = async (command: string): Promise<Partial
       },
     });
 
-    const jsonText = response.text.trim();
+    const jsonText = response.text?.trim();
+    if (!jsonText) return null;
     const parsedJson = JSON.parse(jsonText);
     return parsedJson as Partial<Transaction>;
   } catch (error) {
@@ -96,7 +96,7 @@ export const transcribeAudio = async (audioBase64: string, mimeType: string): Pr
             },
         });
 
-        return response.text;
+        return response.text || "";
     } catch (error) {
         console.error("Error transcribing audio:", error);
         return "";
