@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { MicrophoneIcon, SendIcon, SparklesIcon, StopIcon } from './Icons';
 import { Transaction, Account } from '../types';
