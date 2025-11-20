@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { MicrophoneIcon, SendIcon, SparklesIcon, StopIcon } from './Icons';
 import { Transaction, Account } from '../types';
 import { parseTransactionFromText, transcribeAudio } from '../services/geminiService';
