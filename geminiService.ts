@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType } from './types';
 
 if (!process.env.API_KEY) {
   console.warn("API_KEY environment variable not set. Using a placeholder.");
