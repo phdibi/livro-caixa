@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
 import TransactionForm from './components/TransactionForm';
-import { AiAssistant } from './components/AiAssistant';
+import { AiAssistant } from './components/AIAssistant';
 import TransactionFilter from './components/TransactionFilter';
 import RecurringTransactionsModal from './components/RecurringTransactionsModal';
 import CustomChartView from './components/CustomChartView';
