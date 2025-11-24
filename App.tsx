@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import TransactionForm from './TransactionForm';
-import { AIAssistant } from './AIAssistant';
+import EntryForm from './EntryForm';
+import { GeminiAssistant } from './GeminiAssistant';
 import TransactionFilter from './TransactionFilter';
 import RecurringTransactionsModal from './RecurringTransactionsModal';
 import CustomChartView from './CustomChartView';
@@ -535,7 +535,8 @@ const App: React.FC = () => {
 
     const ListView = () => (
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                         <tr>
@@ -564,6 +565,37 @@ const App: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden">
+                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {sortedTransactions.map(t => (
+                        <li key={t.id} className="p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <div className="flex justify-between items-start mb-1">
+                                <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                                    {new Date(t.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
+                                </div>
+                                <div className={`text-sm font-bold ${t.type === TransactionType.ENTRADA ? 'text-green-500' : 'text-red-500'}`}>
+                                    {t.type === TransactionType.SAIDA && '- '}{formatCurrency(t.amount)}
+                                </div>
+                            </div>
+                            <div className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+                                {t.description}
+                            </div>
+                             <div className="flex justify-between items-end">
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    {t.accountNumber} - {t.accountName} <br/>
+                                    <span className="italic">{t.payee}</span>
+                                </div>
+                                <div className="flex space-x-3">
+                                    <button onClick={() => handleEditTransaction(t)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => handleDeleteTransaction(t.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"><TrashIcon className="w-5 h-5"/></button>
+                                </div>
+                             </div>
+                        </li>
+                    ))}
+                </ul>
+            </div>
             {sortedTransactions.length === 0 && <p className="text-center py-10 text-gray-500 dark:text-gray-400">Nenhum lançamento encontrado para os filtros selecionados.</p>}
         </div>
     );
@@ -573,11 +605,17 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-            <header className="bg-white dark:bg-gray-800 shadow-md">
-                <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">Livro Caixa Inteligente</h1>
-                    <div className="flex items-center space-x-2">
-                        <button onClick={handleSignOut} className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 mr-4">
+            <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-40">
+                <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
+                    <div className="flex w-full sm:w-auto justify-between items-center">
+                        <h1 className="text-xl sm:text-2xl font-bold text-indigo-600 dark:text-indigo-400 truncate">Livro Caixa</h1>
+                        <button onClick={handleSignOut} className="sm:hidden text-xs text-gray-500 dark:text-gray-400 hover:text-red-500">
+                            Sair
+                        </button>
+                    </div>
+                    
+                    <div className="flex items-center w-full sm:w-auto justify-around sm:justify-end sm:space-x-2">
+                        <button onClick={handleSignOut} className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 mr-4">
                             Sair
                         </button>
                          <button
@@ -603,26 +641,28 @@ const App: React.FC = () => {
                         </button>
                         <button 
                             onClick={() => setIsRecurringModalOpen(true)}
-                            className="hidden sm:flex items-center bg-gray-600 text-white px-4 py-2 rounded-md shadow hover:bg-gray-700"
+                            className="flex items-center bg-gray-600 text-white px-3 py-2 rounded-md shadow hover:bg-gray-700"
+                            title="Contas Fixas"
                         >
-                            <CalendarIcon className="w-5 h-5 mr-2"/>
-                            Contas Fixas
+                            <CalendarIcon className="w-5 h-5 sm:mr-2"/>
+                            <span className="hidden sm:inline">Contas Fixas</span>
                         </button>
                         <button 
                             onClick={handleAddTransaction} 
-                            className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700"
+                            className="flex items-center bg-indigo-600 text-white px-3 py-2 rounded-md shadow hover:bg-indigo-700"
+                            title="Adicionar Lançamento"
                         >
-                            <PlusIcon className="w-5 h-5 mr-2"/>
-                            Adicionar
+                            <PlusIcon className="w-5 h-5 sm:mr-2"/>
+                            <span className="hidden sm:inline">Adicionar</span>
                         </button>
                     </div>
                 </div>
             </header>
-            <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
                  <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
                 {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
             </main>
-            <TransactionForm
+            <EntryForm
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}
                 onSave={handleSaveTransaction}
@@ -645,7 +685,7 @@ const App: React.FC = () => {
                 onClose={() => setIsExportModalOpen(false)}
                 transactions={filteredTransactions}
             />
-            <AIAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
+            <GeminiAssistant onTransactionParsed={handleAIParsedTransaction} accounts={accounts} />
         </div>
     );
 };
