@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Transaction, TransactionType, Account } from '../types';
+import { Transaction, TransactionType, Account } from '../';
 
 interface SavePayload {
     transaction: Transaction;
