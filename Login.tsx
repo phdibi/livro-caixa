@@ -5,7 +5,7 @@ import {
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword 
 } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
+import { auth, googleProvider } from './firebase';
 import { SparklesIcon } from './Icons';
 
 const Login: React.FC = () => {
