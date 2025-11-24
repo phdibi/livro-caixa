@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { RecurringTransaction, Account } from '../types';
+import { RecurringTransaction, Account } from './types';
 import RecurringTransactionForm from './RecurringTransactionForm';
 import { EditIcon, TrashIcon, PlusIcon } from './Icons';
 
