@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType } from './types';
 
 interface ExportModalProps {
   isOpen: boolean;
