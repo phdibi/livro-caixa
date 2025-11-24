@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { RecurringTransaction, Account } from './types';
+import { RecurringTransaction, Account } from '../types';
 import RecurringTransactionForm from './RecurringTransactionForm';
 import { EditIcon, TrashIcon, PlusIcon } from './Icons';
 
@@ -79,32 +79,32 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl">
-        <div className="p-6 border-b dark:border-gray-700 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Gerenciar Contas Fixas</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="p-4 sm:p-6 border-b dark:border-gray-700 flex justify-between items-center">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Gerenciar Contas Fixas</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-2xl">&times;</button>
         </div>
         
-        <div className="p-6 space-y-4">
-            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md flex items-center justify-between">
-                <div className="flex items-center space-x-2">
+        <div className="p-4 sm:p-6 space-y-4">
+            <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md flex flex-col sm:flex-row items-center justify-between space-y-3 sm:space-y-0">
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
                     <select 
                         value={generationDate.month} 
                         onChange={e => setGenerationDate(d => ({...d, month: parseInt(e.target.value)}))}
-                        className="p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500"
+                        className="p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 w-1/2 sm:w-auto"
                     >
                         {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
                     </select>
                     <select 
                         value={generationDate.year} 
                         onChange={e => setGenerationDate(d => ({...d, year: parseInt(e.target.value)}))}
-                        className="p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500"
+                        className="p-2 border rounded-md dark:bg-gray-600 dark:border-gray-500 w-1/2 sm:w-auto"
                     >
                         {Array.from({length: 10}, (_, i) => new Date().getFullYear() - 5 + i).map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
                 </div>
-                <button onClick={handleGenerateClick} className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700">
-                    Gerar Lançamentos para o Mês
+                <button onClick={handleGenerateClick} className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700">
+                    Gerar Lançamentos
                 </button>
             </div>
 
@@ -112,12 +112,12 @@ const RecurringTransactionsModal: React.FC<RecurringTransactionsModalProps> = ({
                 {recurringTransactions.length > 0 ? (
                     <ul className="divide-y dark:divide-gray-700">
                         {recurringTransactions.map(rt => (
-                            <li key={rt.id} className="py-3 flex justify-between items-center">
+                            <li key={rt.id} className="py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0">
                                 <div>
                                     <p className="font-semibold text-gray-800 dark:text-gray-200">{rt.description} - {formatCurrency(rt.amount)}</p>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">Dia {rt.dayOfMonth} | Conta: {rt.accountName}</p>
                                 </div>
-                                <div>
+                                <div className="flex self-end sm:self-auto">
                                     <button onClick={() => handleEdit(rt)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-3"><EditIcon className="w-5 h-5"/></button>
                                     <button onClick={() => handleDelete(rt.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"><TrashIcon className="w-5 h-5"/></button>
                                 </div>
