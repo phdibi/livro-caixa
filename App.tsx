@@ -11,7 +11,7 @@ import Login from './Login';
 import { PlusIcon, EditIcon, TrashIcon, ChartBarIcon, ListIcon, CalendarIcon, DownloadIcon } from './Icons';
 
 // Firebase Imports
-import { auth, db } from './services/firebase';
+import { auth, db } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { 
     collection, 
