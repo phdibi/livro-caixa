@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { MicrophoneIcon, SendIcon, SparklesIcon, StopIcon } from './Icons';
-import { Transaction, Account } from '../types';
-import { parseTransactionFromText, transcribeAudio } from '../services/geminiService';
+import { Transaction, Account } from './types';
+import { parseTransactionFromText, transcribeAudio } from './geminiService';
 
 interface GeminiAssistantProps {
     onTransactionParsed: (transaction: Partial<Transaction>) => void;
