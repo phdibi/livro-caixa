@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { RecurringTransaction, TransactionType, Account } from '../types';
+import { RecurringTransaction, TransactionType, Account } from './types';
 
 interface RecurringTransactionFormProps {
     onSave: (transaction: RecurringTransaction) => void;
