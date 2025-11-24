@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
-import TransactionForm from './components/TransactionForm';
-import { AIAssistant } from './components/AIAssistant';
-import TransactionFilter from './components/TransactionFilter';
-import RecurringTransactionsModal from './components/RecurringTransactionsModal';
-import CustomChartView from './components/CustomChartView';
-import ExportModal from './components/ExportModal';
-import Login from './components/Login';
-import { PlusIcon, EditIcon, TrashIcon, ChartBarIcon, ListIcon, CalendarIcon, DownloadIcon } from './components/Icons';
+import TransactionForm from './TransactionForm';
+import { AIAssistant } from './AIAssistant';
+import TransactionFilter from './TransactionFilter';
+import RecurringTransactionsModal from './RecurringTransactionsModal';
+import CustomChartView from './CustomChartView';
+import ExportModal from './ExportModal';
+import Login from './Login';
+import { PlusIcon, EditIcon, TrashIcon, ChartBarIcon, ListIcon, CalendarIcon, DownloadIcon } from './Icons';
 
 // Firebase Imports
 import { auth, db } from './services/firebase';
