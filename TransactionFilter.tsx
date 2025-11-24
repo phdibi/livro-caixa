@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Account } from '../types';
+import { Account } from './types';
 
 interface TransactionFilterProps {
   filters: {
