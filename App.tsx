@@ -1,5 +1,4 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Transaction, Account, TransactionType, RecurringTransaction } from './types';
 import EntryForm from './EntryForm';
 import { GeminiAssistant } from './GeminiAssistant';
@@ -8,23 +7,15 @@ import RecurringTransactionsModal from './RecurringTransactionsModal';
 import CustomChartView from './CustomChartView';
 import ExportModal from './ExportModal';
 import Login from './Login';
-import { PlusIcon, EditIcon, TrashIcon, ChartBarIcon, ListIcon, CalendarIcon, DownloadIcon } from './Icons';
+import { PlusIcon, EditIcon, TrashIcon, ChartBarIcon, ListIcon, CalendarIcon, DownloadIcon, RefreshIcon } from './Icons';
 
-// Firebase Imports
-import { auth, db } from './firebase';
+// Firebase Auth
+import { auth } from './firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { 
-    collection, 
-    query, 
-    where, 
-    onSnapshot, 
-    addDoc, 
-    setDoc, 
-    deleteDoc, 
-    doc, 
-    writeBatch, 
-    getDocs 
-} from 'firebase/firestore';
+
+// Serviço de Sincronização Otimizado
+import { syncService } from './syncService';
+import { cacheService } from './cacheService';
 
 interface SavePayload {
     transaction: Transaction;
@@ -33,7 +24,7 @@ interface SavePayload {
     updateScope?: 'single' | 'future';
 }
 
-// Helper para gerar UUID seguro mesmo em HTTP (para testes mobile)
+// Helper para gerar UUID
 const generateId = () => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
@@ -41,76 +32,11 @@ const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-const initialAccounts: Account[] = [
-    // Despesas
-    { id: 'd1', number: 101, name: 'Sede', type: 'Despesa' },
-    { id: 'd2', number: 102, name: 'Administrativas', type: 'Despesa' },
-    { id: 'd3', number: 103, name: 'Pró-labore', type: 'Despesa' },
-    { id: 'd4', number: 104, name: 'Assessoria', type: 'Despesa' },
-    { id: 'd5', number: 105, name: 'Impostos', type: 'Despesa' },
-    { id: 'd6', number: 106, name: 'Taxas', type: 'Despesa' },
-    { id: 'd7', number: 107, name: 'Juros', type: 'Despesa' },
-    { id: 'd8', number: 108, name: 'Folha de pagamento', type: 'Despesa' },
-    { id: 'd9', number: 109, name: 'Encargos sociais', type: 'Despesa' },
-    { id: 'd10', number: 110, name: 'Defensivos agricolas', type: 'Despesa' },
-    { id: 'd11', number: 111, name: 'Serviços terceirizados', type: 'Despesa' },
-    { id: 'd12', number: 112, name: 'Manutenções de maquinário', type: 'Despesa' },
-    { id: 'd13', number: 113, name: 'Manutenções de instalações', type: 'Despesa' },
-    { id: 'd14', number: 114, name: 'Combustíveis', type: 'Despesa' },
-    { id: 'd15', number: 115, name: 'Arrendamentos', type: 'Despesa' },
-    { id: 'd16', number: 116, name: 'Fretes', type: 'Despesa' },
-    { id: 'd17', number: 117, name: 'Comissões', type: 'Despesa' },
-    { id: 'd18', number: 118, name: 'Sanidade', type: 'Despesa' },
-    { id: 'd19', number: 119, name: 'Reprodução', type: 'Despesa' },
-    { id: 'd20', number: 120, name: 'Pastagens', type: 'Despesa' },
-    { id: 'd21', number: 121, name: 'Suplementação', type: 'Despesa' },
-    { id: 'd22', number: 122, name: 'Despesa Soja', type: 'Despesa' },
-    { id: 'd23', number: 123, name: 'Mercado', type: 'Despesa' },
-    { id: 'd24', number: 124, name: 'Outras despesas', type: 'Despesa' },
-    { id: 'd25', number: 125, name: 'Cavalos', type: 'Despesa' },
-    { id: 'd26', number: 126, name: 'Cães', type: 'Despesa' },
-    { id: 'd27', number: 127, name: 'Suínos e Aves', type: 'Despesa' },
-    { id: 'd28', number: 128, name: 'Veiculos Pessoais', type: 'Despesa' },
-    { id: 'd29', number: 129, name: 'Exposições e eventos', type: 'Despesa' },
-    { id: 'd30', number: 130, name: 'Ferragem', type: 'Despesa' },
-
-    // Investimentos (categorizados como Despesa para fins de fluxo de caixa)
-    { id: 'i1', number: 201, name: 'Touros reprodutores', type: 'Despesa' },
-    { id: 'i2', number: 202, name: 'Novilhos recria', type: 'Despesa' },
-    { id: 'i3', number: 203, name: 'Novilhas recria', type: 'Despesa' },
-    { id: 'i4', number: 204, name: 'Novilhas prenhes', type: 'Despesa' },
-    { id: 'i5', number: 205, name: 'Vacas de invernar', type: 'Despesa' },
-    { id: 'i6', number: 206, name: 'Vacas prenhes', type: 'Despesa' },
-    { id: 'i7', number: 207, name: 'Vacas reprodutoras', type: 'Despesa' },
-    { id: 'i8', number: 208, name: 'Aquisição de Infra estrutura', type: 'Despesa' },
-    { id: 'i9', number: 209, name: 'Aquisição de maquinários', type: 'Despesa' },
-    { id: 'i10', number: 210, name: 'Aquisicao animal cavalar', type: 'Despesa' },
-
-    // Receitas
-    { id: 'r1', number: 301, name: 'Terneiros', type: 'Receita' },
-    { id: 'r2', number: 302, name: 'Terneiras', type: 'Receita' },
-    { id: 'r3', number: 303, name: 'Novilhos gordos', type: 'Receita' },
-    { id: 'r4', number: 304, name: 'Novilhos recria', type: 'Receita' },
-    { id: 'r5', number: 305, name: 'Novilhas gordas', type: 'Receita' },
-    { id: 'r6', number: 306, name: 'Novilhas recria', type: 'Receita' },
-    { id: 'r7', number: 307, name: 'Novilhas prenhes', type: 'Receita' },
-    { id: 'r8', number: 308, name: 'Vacas de invernar', type: 'Receita' },
-    { id: 'r9', number: 309, name: 'Vacas gordas', type: 'Receita' },
-    { id: 'r10', number: 310, name: 'Vacas prenhes', type: 'Receita' },
-    { id: 'r11', number: 311, name: 'Touros reprodução', type: 'Receita' },
-    { id: 'r12', number: 312, name: 'Touros descarte', type: 'Receita' },
-    { id: 'r13', number: 313, name: 'Arrendamentos', type: 'Receita' },
-    { id: 'r14', number: 314, name: 'Soja', type: 'Receita' },
-    { id: 'r15', number: 315, name: 'Arroz', type: 'Receita' },
-    { id: 'r16', number: 316, name: 'Outras culturas', type: 'Receita' },
-    { id: 'r17', number: 317, name: 'Outros produtos', type: 'Receita' },
-    { id: 'r18', number: 318, name: 'Receita Financeira', type: 'Receita' },
-    { id: 'r19', number: 319, name: 'Embrioes', type: 'Receita' },
-];
-
 const App: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
+    const [dataLoading, setDataLoading] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -130,6 +56,21 @@ const App: React.FC = () => {
         endDate: '',
     });
 
+    // Callback para recarregar dados do cache quando houver mudanças
+    const reloadFromCache = useCallback(async () => {
+        if (!user) return;
+        
+        const [trans, acc, rec] = await Promise.all([
+            cacheService.getTransactions(user.uid),
+            cacheService.getAccounts(user.uid),
+            cacheService.getRecurringTransactions(user.uid)
+        ]);
+        
+        setTransactions(trans);
+        setAccounts(acc.sort((a, b) => a.number - b.number));
+        setRecurringTransactions(rec);
+    }, [user]);
+
     // Auth Listener
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -139,55 +80,63 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, []);
 
-    // Firestore Listeners
+    // Inicialização com Sync Service
     useEffect(() => {
         if (!user) {
             setTransactions([]);
             setAccounts([]);
             setRecurringTransactions([]);
+            syncService.cleanup();
             return;
         }
 
-        // Transactions Listener
-        const qTransactions = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const unsubTrans = onSnapshot(qTransactions, (snapshot) => {
-            const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-            setTransactions(loaded);
-        });
-
-        // Accounts Listener (Seed if empty)
-        const qAccounts = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-        const unsubAcc = onSnapshot(qAccounts, async (snapshot) => {
-            if (snapshot.empty && snapshot.metadata.fromCache === false) {
-                // Seed initial accounts
-                const batch = writeBatch(db);
-                initialAccounts.forEach(acc => {
-                    const ref = doc(collection(db, 'accounts'));
-                    batch.set(ref, { ...acc, userId: user.uid });
-                });
-                await batch.commit();
-            } else {
-                const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-                setAccounts(loaded.sort((a, b) => a.number - b.number));
+        const initializeData = async () => {
+            setDataLoading(true);
+            try {
+                // Carregar dados (do cache primeiro, depois sync em background)
+                const { transactions: trans, accounts: acc, recurringTransactions: rec } = 
+                    await syncService.initialize(user.uid, reloadFromCache);
+                
+                setTransactions(trans);
+                setAccounts(acc.sort((a, b) => a.number - b.number));
+                setRecurringTransactions(rec);
+            } catch (error) {
+                console.error('Erro ao inicializar dados:', error);
+            } finally {
+                setDataLoading(false);
             }
-        });
+        };
 
-        // Recurring Transactions Listener
-        const qRecurring = query(collection(db, 'recurring_transactions'), where('userId', '==', user.uid));
-        const unsubRec = onSnapshot(qRecurring, (snapshot) => {
-            const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RecurringTransaction));
-            setRecurringTransactions(loaded);
-        });
+        initializeData();
 
         return () => {
-            unsubTrans();
-            unsubAcc();
-            unsubRec();
+            syncService.cleanup();
         };
-    }, [user]);
+    }, [user, reloadFromCache]);
 
-    const handleSignOut = () => {
-        signOut(auth);
+    const handleSignOut = async () => {
+        syncService.cleanup();
+        await signOut(auth);
+    };
+
+    // Sync manual forçado
+    const handleForceSync = async () => {
+        if (!user || isSyncing) return;
+        
+        setIsSyncing(true);
+        try {
+            const { transactions: trans, accounts: acc, recurringTransactions: rec } = 
+                await syncService.forceFullSync(user.uid);
+            
+            setTransactions(trans);
+            setAccounts(acc.sort((a, b) => a.number - b.number));
+            setRecurringTransactions(rec);
+        } catch (error) {
+            console.error('Erro ao sincronizar:', error);
+            alert('Erro ao sincronizar. Tente novamente.');
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const filteredTransactions = useMemo(() => {
@@ -239,33 +188,42 @@ const App: React.FC = () => {
                 const confirmMessage = `Este é um lançamento parcelado (${transactionToDelete.description}).\n\nClique em "OK" para excluir a série inteira.\nClique em "Cancelar" para excluir apenas esta parcela.`;
                 if (window.confirm(confirmMessage)) {
                     // Delete entire series
-                    const batch = writeBatch(db);
                     const seriesTransactions = transactions.filter(t => t.seriesId === transactionToDelete.seriesId);
-                    seriesTransactions.forEach(t => {
-                        batch.delete(doc(db, 'transactions', t.id));
-                    });
-                    await batch.commit();
+                    const idsToDelete = seriesTransactions.map(t => t.id);
+                    
+                    await syncService.deleteTransactionsBatch(idsToDelete, user.uid);
+                    setTransactions(prev => prev.filter(t => t.seriesId !== transactionToDelete.seriesId));
                 } else {
                     // Delete one and renumber
                     const seriesId = transactionToDelete.seriesId;
                     const baseDescription = transactionToDelete.description.replace(/\s\(\d+\/\d+\)$/, '');
                     
-                    const batch = writeBatch(db);
-                    batch.delete(doc(db, 'transactions', id));
+                    await syncService.deleteTransaction(id, user.uid);
 
                     const remainingInstallments = transactions
                         .filter(t => t.seriesId === seriesId && t.id !== id)
                         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
                     
-                    remainingInstallments.forEach((t, index) => {
-                        const newDesc = `${baseDescription} (${index + 1}/${remainingInstallments.length})`;
-                        batch.update(doc(db, 'transactions', t.id), { description: newDesc });
+                    // Renumerar parcelas restantes
+                    const updatedTransactions: Transaction[] = remainingInstallments.map((t, index) => ({
+                        ...t,
+                        description: `${baseDescription} (${index + 1}/${remainingInstallments.length})`
+                    }));
+                    
+                    await syncService.saveTransactionsBatch(updatedTransactions, user.uid);
+                    
+                    setTransactions(prev => {
+                        const withoutDeleted = prev.filter(t => t.id !== id);
+                        return withoutDeleted.map(t => {
+                            const updated = updatedTransactions.find(u => u.id === t.id);
+                            return updated || t;
+                        });
                     });
-                    await batch.commit();
                 }
             } else {
                 if (window.confirm(`Tem certeza que deseja excluir o lançamento: "${transactionToDelete.description}"?`)) {
-                    await deleteDoc(doc(db, 'transactions', id));
+                    await syncService.deleteTransaction(id, user.uid);
+                    setTransactions(prev => prev.filter(t => t.id !== id));
                 }
             }
         } catch (error) {
@@ -274,30 +232,28 @@ const App: React.FC = () => {
         }
     };
 
-
     const handleSaveTransaction = async (payload: SavePayload) => {
         if (!user) return;
         const { transaction, installmentsCount = 1, firstInstallmentDate, updateScope = 'single' } = payload;
 
         try {
-            const batch = writeBatch(db);
+            const transactionsToSave: Transaction[] = [];
+            const transactionsToDelete: string[] = [];
 
             if (transactionToEdit) {
                 const originalSeriesId = transactionToEdit.seriesId;
-                const originalInstallmentsCount = originalSeriesId ? transactions.filter(t => t.seriesId === originalSeriesId).length : 1;
+                const originalInstallmentsCount = originalSeriesId 
+                    ? transactions.filter(t => t.seriesId === originalSeriesId).length 
+                    : 1;
                 
                 if (originalInstallmentsCount !== installmentsCount) {
                     // REGENERATION LOGIC
-                    // 1. Determine what to delete
-                    const transactionsToDelete = originalSeriesId
+                    const toDelete = originalSeriesId
                         ? transactions.filter(t => t.seriesId === originalSeriesId)
                         : [transactionToEdit];
                     
-                    transactionsToDelete.forEach(t => {
-                         batch.delete(doc(db, 'transactions', t.id));
-                    });
+                    transactionsToDelete.push(...toDelete.map(t => t.id));
 
-                    // 2. Determine start date
                     let startDate;
                     if (originalSeriesId) {
                         const seriesStart = transactions
@@ -310,37 +266,28 @@ const App: React.FC = () => {
 
                     const baseDescription = transaction.description.replace(/\s\(\d+\/\d+\)$/, '');
 
-                    // 3. Create new records
                     if (installmentsCount > 1) {
                         const newSeriesId = originalSeriesId || generateId();
                         for (let i = 0; i < installmentsCount; i++) {
                             const installmentDate = new Date(startDate);
                             installmentDate.setMonth(startDate.getMonth() + i);
-                            const newId = generateId();
-                            const newTrans = {
+                            transactionsToSave.push({
                                 ...transaction,
-                                id: newId,
+                                id: generateId(),
                                 seriesId: newSeriesId,
                                 date: installmentDate.toISOString().split('T')[0],
                                 description: `${baseDescription} (${i + 1}/${installmentsCount})`,
-                                userId: user.uid
-                            };
-                            // Using setDoc with a new ID to ensure it's a new document
-                            batch.set(doc(db, 'transactions', newId), newTrans);
+                            });
                         }
-                    } else { // Back to single
-                         const newTrans = {
+                    } else {
+                        transactionsToSave.push({
                             ...transaction,
-                            id: transactionToEdit.id, // Keep original ID for single
-                            seriesId: undefined, // Remove series ID explicitly
+                            id: transactionToEdit.id,
+                            seriesId: undefined,
                             date: startDate.toISOString().split('T')[0],
                             description: baseDescription,
-                            userId: user.uid
-                        };
-                        delete newTrans.seriesId; // Ensure property is gone
-                        batch.set(doc(db, 'transactions', transactionToEdit.id), newTrans);
+                        });
                     }
-
                 } else {
                     // DATA UPDATE LOGIC
                     if (updateScope === 'future' && originalSeriesId) {
@@ -361,17 +308,16 @@ const App: React.FC = () => {
                             const installmentNumberMatch = originalInstallment.description.match(/\((\d+)\/\d+\)/);
                             const installmentNumber = installmentNumberMatch ? installmentNumberMatch[1] : '';
                             
-                            const updatedFields = {
+                            transactionsToSave.push({
                                 ...transaction,
+                                id: originalInstallment.id,
+                                seriesId: originalSeriesId,
                                 date: newDate.toISOString().split('T')[0],
                                 description: `${baseDescription} (${installmentNumber}/${seriesTransactions.length})`,
-                                userId: user.uid
-                            };
-                            batch.update(doc(db, 'transactions', originalInstallment.id), updatedFields);
+                            });
                         }
-                    } else { // 'single' update
-                        const { id, ...data } = transaction;
-                        batch.update(doc(db, 'transactions', id), { ...data, userId: user.uid });
+                    } else {
+                        transactionsToSave.push({ ...transaction, id: transactionToEdit.id });
                     }
                 }
             } else {
@@ -383,51 +329,70 @@ const App: React.FC = () => {
                     for (let i = 0; i < installmentsCount; i++) {
                         const installmentDate = new Date(startDate);
                         installmentDate.setMonth(startDate.getMonth() + i);
-                        const newId = generateId();
                         
-                        const newTrans = {
+                        transactionsToSave.push({
                             ...transaction,
-                            id: newId,
+                            id: generateId(),
                             seriesId: seriesId,
                             date: installmentDate.toISOString().split('T')[0],
                             description: `${transaction.description} (${i + 1}/${installmentsCount})`,
-                            userId: user.uid
-                        };
-                        batch.set(doc(db, 'transactions', newId), newTrans);
+                        });
                     }
                 } else {
-                    const newId = generateId();
-                    batch.set(doc(db, 'transactions', newId), { ...transaction, id: newId, userId: user.uid });
+                    transactionsToSave.push({ ...transaction, id: generateId() });
                 }
             }
 
-            await batch.commit();
+            // Executar operações
+            if (transactionsToDelete.length > 0) {
+                await syncService.deleteTransactionsBatch(transactionsToDelete, user.uid);
+            }
+            
+            if (transactionsToSave.length > 0) {
+                await syncService.saveTransactionsBatch(transactionsToSave, user.uid);
+            }
+
+            // Atualizar state local
+            setTransactions(prev => {
+                let updated = prev.filter(t => !transactionsToDelete.includes(t.id));
+                
+                transactionsToSave.forEach(newTrans => {
+                    const existingIndex = updated.findIndex(t => t.id === newTrans.id);
+                    if (existingIndex >= 0) {
+                        updated[existingIndex] = newTrans;
+                    } else {
+                        updated.push(newTrans);
+                    }
+                });
+                
+                return updated;
+            });
+
             setTransactionToEdit(null);
         } catch (error) {
             console.error("Erro ao salvar:", error);
-            alert("Erro ao salvar transação no banco de dados.");
+            alert("Erro ao salvar transação.");
         }
     };
     
     const handleGenerateRecurring = async (year: number, month: number) => {
         if (!user) return;
-        const batch = writeBatch(db);
-        let count = 0;
-
+        
         const existingSignatures = new Set(
             transactions
                 .filter(t => new Date(t.date).getFullYear() === year && new Date(t.date).getMonth() === month - 1)
                 .map(t => `${new Date(t.date).getDate()}-${t.accountNumber}-${t.amount}-${t.description}`)
         );
 
+        const newTransactions: Transaction[] = [];
+
         recurringTransactions.forEach(rt => {
             const transactionDate = new Date(year, month - 1, rt.dayOfMonth);
             if (transactionDate.getMonth() === month - 1) {
-                 const signature = `${rt.dayOfMonth}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
-                 if (!existingSignatures.has(signature)) {
-                    const newId = generateId();
-                    const newTrans = {
-                        id: newId,
+                const signature = `${rt.dayOfMonth}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
+                if (!existingSignatures.has(signature)) {
+                    newTransactions.push({
+                        id: generateId(),
                         date: transactionDate.toISOString().split('T')[0],
                         type: rt.type,
                         accountNumber: rt.accountNumber,
@@ -436,28 +401,25 @@ const App: React.FC = () => {
                         amount: rt.amount,
                         payee: rt.payee,
                         paymentMethod: rt.paymentMethod,
-                        userId: user.uid
-                    };
-                    batch.set(doc(db, 'transactions', newId), newTrans);
-                    count++;
-                 }
+                    });
+                }
             }
         });
 
-        if (count > 0) {
-            await batch.commit();
-            alert(`${count} lançamento(s) recorrente(s) gerado(s) com sucesso!`);
+        if (newTransactions.length > 0) {
+            await syncService.saveTransactionsBatch(newTransactions, user.uid);
+            setTransactions(prev => [...prev, ...newTransactions]);
+            alert(`${newTransactions.length} lançamento(s) recorrente(s) gerado(s) com sucesso!`);
         } else {
             alert('Nenhum novo lançamento recorrente para gerar neste mês.');
         }
     };
 
-
     const handleAIParsedTransaction = async (parsedData: Partial<Transaction>) => {
         if (!user) return;
-        const newId = generateId();
+        
         const fullTransaction: Transaction = {
-            id: newId,
+            id: generateId(),
             date: parsedData.date || new Date().toISOString().split('T')[0],
             type: parsedData.type || TransactionType.SAIDA,
             accountNumber: parsedData.accountNumber || 0,
@@ -468,38 +430,51 @@ const App: React.FC = () => {
             amount: parsedData.amount || 0,
             payee: parsedData.payee || 'N/A',
             paymentMethod: parsedData.paymentMethod || 'N/A',
-            userId: user.uid
-        } as Transaction; // Casting to include userId
+        };
         
         try {
-            await setDoc(doc(db, 'transactions', newId), { ...fullTransaction, userId: user.uid });
+            await syncService.saveTransaction(fullTransaction, user.uid);
+            setTransactions(prev => [...prev, fullTransaction]);
         } catch (e) {
             console.error("Erro AI:", e);
             alert("Erro ao salvar transação da IA.");
         }
     };
     
-    // Recurring Transactions Logic (Sync with Firestore)
     const handleSaveRecurring = async (transaction: RecurringTransaction) => {
         if (!user) return;
         try {
             const id = transaction.id || generateId();
-            await setDoc(doc(db, 'recurring_transactions', id), { ...transaction, id, userId: user.uid });
+            const fullTransaction = { ...transaction, id };
+            
+            await syncService.saveRecurringTransaction(fullTransaction, user.uid);
+            
+            setRecurringTransactions(prev => {
+                const existing = prev.findIndex(t => t.id === id);
+                if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = fullTransaction;
+                    return updated;
+                }
+                return [...prev, fullTransaction];
+            });
         } catch (e) {
             console.error(e);
         }
     };
 
     const handleDeleteRecurring = async (id: string) => {
+        if (!user) return;
         try {
-            await deleteDoc(doc(db, 'recurring_transactions', id));
+            await syncService.deleteRecurringTransaction(id, user.uid);
+            setRecurringTransactions(prev => prev.filter(t => t.id !== id));
         } catch (e) {
             console.error(e);
         }
     };
 
     const sortedTransactions = useMemo(() => {
-      return [...filteredTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return [...filteredTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [filteredTransactions]);
 
     const formatCurrency = (value: number) => {
@@ -512,7 +487,7 @@ const App: React.FC = () => {
 
     const DashboardView = () => (
         <div className="space-y-6">
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                     <h3 className="text-gray-500 dark:text-gray-400">Total de Entradas</h3>
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(totalEntradas)}</p>
@@ -582,7 +557,7 @@ const App: React.FC = () => {
                             <div className="text-base font-semibold text-gray-900 dark:text-white mb-1">
                                 {t.description}
                             </div>
-                             <div className="flex justify-between items-end">
+                            <div className="flex justify-between items-end">
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {t.accountNumber} - {t.accountName} <br/>
                                     <span className="italic">{t.payee}</span>
@@ -591,7 +566,7 @@ const App: React.FC = () => {
                                     <button onClick={() => handleEditTransaction(t)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"><EditIcon className="w-5 h-5"/></button>
                                     <button onClick={() => handleDeleteTransaction(t.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"><TrashIcon className="w-5 h-5"/></button>
                                 </div>
-                             </div>
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -618,7 +593,17 @@ const App: React.FC = () => {
                         <button onClick={handleSignOut} className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 mr-4">
                             Sair
                         </button>
-                         <button
+                        {/* Botão de Sync */}
+                        <button
+                            onClick={handleForceSync}
+                            disabled={isSyncing}
+                            className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${isSyncing ? 'animate-spin' : ''}`}
+                            aria-label="Sincronizar dados"
+                            title="Sincronizar dados"
+                        >
+                            <RefreshIcon className="w-6 h-6" />
+                        </button>
+                        <button
                             onClick={() => setIsExportModalOpen(true)}
                             className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
                             aria-label="Exportar para Excel"
@@ -632,7 +617,7 @@ const App: React.FC = () => {
                         >
                             <ChartBarIcon className="w-6 h-6" />
                         </button>
-                         <button
+                        <button
                             onClick={() => setActiveView('list')}
                             className={`p-2 rounded-md ${activeView === 'list' ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
                             aria-label="Lista de Transações"
@@ -659,8 +644,17 @@ const App: React.FC = () => {
                 </div>
             </header>
             <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                 <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
-                {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
+                {dataLoading ? (
+                    <div className="flex justify-center items-center py-20">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                        <span className="ml-3 text-gray-500">Carregando dados...</span>
+                    </div>
+                ) : (
+                    <>
+                        <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
+                        {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
+                    </>
+                )}
             </main>
             <EntryForm
                 isOpen={isFormOpen}
@@ -670,14 +664,15 @@ const App: React.FC = () => {
                 accounts={accounts}
                 transactions={transactions}
             />
-            <ModifiedRecurringModalWrapper 
+            <RecurringTransactionsModal 
                 isOpen={isRecurringModalOpen}
                 onClose={() => setIsRecurringModalOpen(false)}
                 accounts={accounts}
                 recurringTransactions={recurringTransactions}
-                onSave={handleSaveRecurring}
-                onDelete={handleDeleteRecurring}
+                setRecurringTransactions={setRecurringTransactions}
                 onGenerate={handleGenerateRecurring}
+                onSaveItem={handleSaveRecurring}
+                onDeleteItem={handleDeleteRecurring}
             />
 
             <ExportModal 
@@ -689,22 +684,5 @@ const App: React.FC = () => {
         </div>
     );
 };
-
-// Helper component to bridge the old Modal interface with new DB handlers
-const ModifiedRecurringModalWrapper: React.FC<any> = ({ isOpen, onClose, accounts, recurringTransactions, onSave, onDelete, onGenerate }) => {
-    return (
-        <RecurringTransactionsModal 
-            isOpen={isOpen}
-            onClose={onClose}
-            accounts={accounts}
-            recurringTransactions={recurringTransactions}
-            setRecurringTransactions={() => {}} 
-            onGenerate={onGenerate}
-            // @ts-ignore 
-            onSaveItem={onSave}
-            onDeleteItem={onDelete}
-        />
-    )
-}
 
 export default App;
