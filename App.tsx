@@ -44,7 +44,7 @@ const App: React.FC = () => {
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
-    const [activeView, setActiveView] = useState<'list' | 'dashboard'>('dashboard');
+    const [activeView, setActiveView] = useState<'list' | 'dashboard' | 'irpf'>('dashboard');
     const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     
@@ -484,14 +484,85 @@ const App: React.FC = () => {
         return sortOrder === 'asc' ? sorted : sorted.reverse();
     }, [filteredTransactions, sortOrder]);
 
-    const formatCurrency = (value: number) => {
+        const formatCurrency = (value: number) => {
         return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     };
 
-    const totalEntradas = useMemo(() => filteredTransactions.filter(t => t.type === TransactionType.ENTRADA).reduce((acc, t) => acc + t.amount, 0), [filteredTransactions]);
-    const totalSaidas = useMemo(() => filteredTransactions.filter(t => t.type === TransactionType.SAIDA).reduce((acc, t) => acc + t.amount, 0), [filteredTransactions]);
+    const totalEntradas = useMemo(
+        () =>
+            filteredTransactions
+                .filter((t) => t.type === TransactionType.ENTRADA)
+                .reduce((acc, t) => acc + t.amount, 0),
+        [filteredTransactions]
+    );
+
+    const totalSaidas = useMemo(
+        () =>
+            filteredTransactions
+                .filter((t) => t.type === TransactionType.SAIDA)
+                .reduce((acc, t) => acc + t.amount, 0),
+        [filteredTransactions]
+    );
+
     const saldo = totalEntradas - totalSaidas;
 
+    // ======== HELPERS PARA CAMPOS DE IR E COMPROVANTE ========
+    // Usamos "as any" para funcionar mesmo que seu arquivo types.ts
+    // tenha mais campos do que este snapshot aqui.
+    const IR_CATEGORY_LABELS: Record<string, string> = {
+        NAO_INFORMADO: 'Não informado',
+        SAUDE: 'Saúde',
+        EDUCACAO: 'Educação',
+        PREVIDENCIA: 'Previdência',
+        ATIVIDADE_RURAL: 'Atividade rural',
+        NAO_DEDUTIVEL: 'Não dedutível',
+    };
+
+    const getIrCategoryFromTransaction = (t: Transaction): string | undefined => {
+        const anyTx = t as any;
+        return anyTx.irCategory as string | undefined;
+    };
+
+    const getReceiptStatusFromTransaction = (t: Transaction): string | undefined => {
+        const anyTx = t as any;
+        return anyTx.receiptStatus as string | undefined;
+    };
+
+    const getRequiresReceiptFromTransaction = (t: Transaction): boolean => {
+        const anyTx = t as any;
+        return Boolean(anyTx.requiresReceipt);
+    };
+
+    const getIrCategoryLabel = (category?: string) => {
+        if (!category) return 'Não informado';
+        return IR_CATEGORY_LABELS[category] || category;
+    };
+
+    const hasValidReceiptForIR = (t: Transaction) => {
+        const receiptStatus = getReceiptStatusFromTransaction(t);
+        const requiresReceipt = getRequiresReceiptFromTransaction(t);
+
+        if (!receiptStatus) return false;
+        if (receiptStatus === 'POSSUI_COMPROVANTE') return true;
+
+        // Se a conta normalmente exige comprovante e o status não está marcado como "possui",
+        // consideramos que não está ok para IR.
+        if (requiresReceipt) return false;
+
+        return false;
+    };
+
+    const isIrRelevantTransaction = (
+        t: Transaction,
+        { includeNaoDedutivel }: { includeNaoDedutivel: boolean }
+    ) => {
+        const category = getIrCategoryFromTransaction(t);
+        if (!category || category === 'NAO_INFORMADO') return false;
+        if (!includeNaoDedutivel && category === 'NAO_DEDUTIVEL') return false;
+        return true;
+    };
+
+    // -------- DASHBOARD GERAL --------
     const DashboardView = () => (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -505,18 +576,215 @@ const App: React.FC = () => {
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                     <h3 className="text-gray-500 dark:text-gray-400">Saldo Atual</h3>
-                    <p className={`text-3xl font-bold ${saldo >= 0 ? 'text-blue-500' : 'text-orange-500'}`}>{formatCurrency(saldo)}</p>
+                    <p
+                        className={`text-3xl font-bold ${
+                            saldo >= 0 ? 'text-blue-500' : 'text-orange-500'
+                        }`}
+                    >
+                        {formatCurrency(saldo)}
+                    </p>
                 </div>
             </div>
-            <CustomChartView 
-                transactions={filteredTransactions} 
-                accounts={accounts}
-            />
+            <CustomChartView transactions={filteredTransactions} accounts={accounts} />
         </div>
     );
 
+    // -------- VISÃO IRPF (FILTRADA E TOTALIZADA) --------
+    const IRPFView: React.FC = () => {
+        const [onlyWithReceipt, setOnlyWithReceipt] = useState(true);
+        const [includeNaoDedutivel, setIncludeNaoDedutivel] = useState(false);
+
+        // Base: usa os lançamentos já filtrados (datas, conta, tipo)
+        // e já ordenados (sortedTransactions)
+        const irTransactions = useMemo(
+            () =>
+                sortedTransactions.filter((t) => {
+                    if (!isIrRelevantTransaction(t, { includeNaoDedutivel })) return false;
+                    if (onlyWithReceipt && !hasValidReceiptForIR(t)) return false;
+                    return true;
+                }),
+            [sortedTransactions, onlyWithReceipt, includeNaoDedutivel]
+        );
+
+        const totalEntradasIR = useMemo(
+            () =>
+                irTransactions
+                    .filter((t) => t.type === TransactionType.ENTRADA)
+                    .reduce((acc, t) => acc + t.amount, 0),
+            [irTransactions]
+        );
+
+        const totalSaidasIR = useMemo(
+            () =>
+                irTransactions
+                    .filter((t) => t.type === TransactionType.SAIDA)
+                    .reduce((acc, t) => acc + t.amount, 0),
+            [irTransactions]
+        );
+
+        const saldoIR = totalEntradasIR - totalSaidasIR;
+
+        const groupedByCategory = useMemo(() => {
+            const map: Record<
+                string,
+                { category: string; entries: number; exits: number; count: number }
+            > = {};
+
+            irTransactions.forEach((t) => {
+                const code = getIrCategoryFromTransaction(t) || 'NAO_INFORMADO';
+                if (!map[code]) {
+                    map[code] = { category: code, entries: 0, exits: 0, count: 0 };
+                }
+                if (t.type === TransactionType.ENTRADA) {
+                    map[code].entries += t.amount;
+                } else {
+                    map[code].exits += t.amount;
+                }
+                map[code].count += 1;
+            });
+
+            return Object.values(map).sort((a, b) =>
+                getIrCategoryLabel(a.category).localeCompare(getIrCategoryLabel(b.category))
+            );
+        }, [irTransactions]);
+
+        const totalConsidered = irTransactions.length;
+        const totalFilteredBase = sortedTransactions.length;
+
+        return (
+            <div className="space-y-6">
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            Visão para Imposto de Renda (IRPF)
+                        </h2>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Considerando os filtros de cima (período, conta, tipo) e apenas os
+                            lançamentos com categoria de IR preenchida.
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {totalConsidered} de {totalFilteredBase} lançamentos filtrados estão sendo
+                            considerados para esta visão.
+                        </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <label className="inline-flex items-center text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                                type="checkbox"
+                                className="mr-2"
+                                checked={onlyWithReceipt}
+                                onChange={(e) => setOnlyWithReceipt(e.target.checked)}
+                            />
+                            Somente lançamentos com comprovante
+                        </label>
+                        <label className="inline-flex items-center text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                                type="checkbox"
+                                className="mr-2"
+                                checked={!includeNaoDedutivel}
+                                onChange={(e) => setIncludeNaoDedutivel(!e.target.checked)}
+                            />
+                            Ignorar categoria &quot;Não dedutível&quot;
+                        </label>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <h3 className="text-gray-500 dark:text-gray-400">Entradas consideradas no IR</h3>
+                        <p className="text-2xl font-bold text-green-500">
+                            {formatCurrency(totalEntradasIR)}
+                        </p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <h3 className="text-gray-500 dark:text-gray-400">Saídas consideradas no IR</h3>
+                        <p className="text-2xl font-bold text-red-500">
+                            {formatCurrency(totalSaidasIR)}
+                        </p>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <h3 className="text-gray-500 dark:text-gray-400">Saldo (base IR)</h3>
+                        <p
+                            className={`text-2xl font-bold ${
+                                saldoIR >= 0 ? 'text-blue-500' : 'text-orange-500'
+                            }`}
+                        >
+                            {formatCurrency(saldoIR)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            Totais por categoria de IR
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Use estes valores como base para o preenchimento da declaração.
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Categoria IR
+                                    </th>
+                                    <th className="px-4 py-2 text-right font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Entradas
+                                    </th>
+                                    <th className="px-4 py-2 text-right font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Saídas
+                                    </th>
+                                    <th className="px-4 py-2 text-right font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Saldo
+                                    </th>
+                                    <th className="px-4 py-2 text-center font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        Qtde lanç.
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                {groupedByCategory.map((row) => (
+                                    <tr key={row.category}>
+                                        <td className="px-4 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">
+                                            {getIrCategoryLabel(row.category)}
+                                        </td>
+                                        <td className="px-4 py-2 whitespace-nowrap text-right text-green-500">
+                                            {formatCurrency(row.entries)}
+                                        </td>
+                                        <td className="px-4 py-2 whitespace-nowrap text-right text-red-500">
+                                            {formatCurrency(row.exits)}
+                                        </td>
+                                        <td className="px-4 py-2 whitespace-nowrap text-right font-semibold">
+                                            {formatCurrency(row.entries - row.exits)}
+                                        </td>
+                                        <td className="px-4 py-2 whitespace-nowrap text-center">
+                                            {row.count}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {groupedByCategory.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={5}
+                                            className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            Nenhum lançamento com categoria de IR encontrada para os
+                                            filtros selecionados.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // -------- LISTVIEW COM DESTAQUE DE NOTA FISCAL --------
-    // -------- LISTVIEW COM DESTAQUE DE NOTA FISCAL + COLUNAS DE IR --------
+
 const ListView = () => {
   // Estatísticas por invoiceId
   type InvoiceStats = {
@@ -809,15 +1077,20 @@ const ListView = () => {
                             Sair
                         </button>
                         {/* Botão de Sync */}
+                                                {/* Botão de Sync */}
                         <button
                             onClick={handleForceSync}
                             disabled={isSyncing}
-                            className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${isSyncing ? 'animate-spin' : ''}`}
+                            className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${
+                                isSyncing ? 'animate-spin' : ''
+                            }`}
                             aria-label="Sincronizar dados"
                             title="Sincronizar dados"
                         >
                             <RefreshIcon className="w-6 h-6" />
                         </button>
+
+                        {/* Exportar */}
                         <button
                             onClick={() => setIsExportModalOpen(true)}
                             className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -825,20 +1098,46 @@ const ListView = () => {
                         >
                             <DownloadIcon className="w-6 h-6" />
                         </button>
+
+                        {/* Dashboard */}
                         <button
                             onClick={() => setActiveView('dashboard')}
-                            className={`p-2 rounded-md ${activeView === 'dashboard' ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                            className={`p-2 rounded-md ${
+                                activeView === 'dashboard'
+                                    ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'
+                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
                             aria-label="Dashboard"
                         >
                             <ChartBarIcon className="w-6 h-6" />
                         </button>
+
+                        {/* IRPF */}
+                        <button
+                            onClick={() => setActiveView('irpf')}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                                activeView === 'irpf'
+                                    ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-200'
+                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                            aria-label="Visão IRPF"
+                        >
+                            IRPF
+                        </button>
+
+                        {/* Lista */}
                         <button
                             onClick={() => setActiveView('list')}
-                            className={`p-2 rounded-md ${activeView === 'list' ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                            className={`p-2 rounded-md ${
+                                activeView === 'list'
+                                    ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'
+                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
                             aria-label="Lista de Transações"
                         >
                             <ListIcon className="w-6 h-6" />
                         </button>
+
                         <button 
                             onClick={() => setIsRecurringModalOpen(true)}
                             className="flex items-center bg-gray-600 text-white px-3 py-2 rounded-md shadow hover:bg-gray-700"
@@ -866,8 +1165,15 @@ const ListView = () => {
                     </div>
                 ) : (
                     <>
-                        <TransactionFilter filters={filters} onFilterChange={setFilters} accounts={accounts} />
-                        {activeView === 'dashboard' ? <DashboardView /> : <ListView />}
+                        <TransactionFilter
+                            filters={filters}
+                            onFilterChange={setFilters}
+                            accounts={accounts}
+                        />
+                        {activeView === 'dashboard' && <DashboardView />}
+                        {activeView === 'list' && <ListView />}
+                        {activeView === 'irpf' && <IRPFView />}
+
                     </>
                 )}
             </main>

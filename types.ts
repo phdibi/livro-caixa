@@ -30,6 +30,7 @@ export enum IrCategory {
   LIVRO_CAIXA = 'livro-caixa',
   ALUGUEL = 'aluguel',
   BEM_DIREITO = 'bem-direito',
+  ATIVIDADE_RURAL = 'atividade-rural',
   OUTRA = 'outra',
 }
 
