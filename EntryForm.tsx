@@ -751,7 +751,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
               Imposto de Renda
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
     Comprovante / Nota fiscal
