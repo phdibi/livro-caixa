@@ -79,36 +79,36 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
   // Quando abre o formulário
   useEffect(() => {
-    if (isOpen) {
-      if (transactionToEdit) {
-        // Edição de lançamento existente
-        setTransaction({
-          ...transactionToEdit,
-          quantity: transactionToEdit.quantity ?? 1,
-          unitValue: transactionToEdit.unitValue ?? transactionToEdit.amount,
-        });
-        setFirstInstallmentDate(transactionToEdit.date);
-        setUpdateScope('single');
-        setIsInvoiceMode(false);
-        setItems([createEmptyItem()]);
+    if (!isOpen) return;
 
-        if (isEditingInstallment) {
-          const totalInstallmentsForSeries = transactions.filter(
-            (t) => t.seriesId === transactionToEdit.seriesId
-          ).length;
-          setInstallmentsCount(totalInstallmentsForSeries || 1);
-        } else {
-          setInstallmentsCount(1);
-        }
+    if (transactionToEdit) {
+      // Edição de lançamento existente
+      setTransaction({
+        ...transactionToEdit,
+        quantity: transactionToEdit.quantity ?? 1,
+        unitValue: transactionToEdit.unitValue ?? transactionToEdit.amount,
+      });
+      setFirstInstallmentDate(transactionToEdit.date);
+      setUpdateScope('single');
+      setIsInvoiceMode(false);
+      setItems([createEmptyItem()]);
+
+      if (isEditingInstallment) {
+        const totalInstallmentsForSeries = transactions.filter(
+          (t) => t.seriesId === transactionToEdit.seriesId
+        ).length;
+        setInstallmentsCount(totalInstallmentsForSeries || 1);
       } else {
-        // Novo lançamento
-        const initialState = getInitialState();
-        setTransaction(initialState);
         setInstallmentsCount(1);
-        setFirstInstallmentDate(initialState.date);
-        setIsInvoiceMode(false);
-        setItems([createEmptyItem()]);
       }
+    } else {
+      // Novo lançamento
+      const initialState = getInitialState();
+      setTransaction(initialState);
+      setInstallmentsCount(1);
+      setFirstInstallmentDate(initialState.date);
+      setIsInvoiceMode(false);
+      setItems([createEmptyItem()]);
     }
   }, [transactionToEdit, accounts, isOpen, transactions, isEditingInstallment]);
 
@@ -198,79 +198,79 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
   const invoiceTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
 
+  // -------- SUBMIT --------
+
   const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  // ---------------------------------------------------
-  //      MODO NOTA FISCAL  (com parcelamento)
-  // ---------------------------------------------------
-  if (isInvoiceMode && !isEditingInstallment) {
-    const validItems = items.filter(
-      (item) =>
-        item.description.trim() !== '' ||
-        (!!item.amount && !isNaN(item.amount))
-    );
+    // ---------- MODO NOTA FISCAL (com ou sem parcelas) ----------
+    if (isInvoiceMode && !isEditingInstallment) {
+      const validItems = items.filter(
+        (item) =>
+          item.description.trim() !== '' ||
+          (!!item.amount && !isNaN(item.amount))
+      );
 
-    if (validItems.length === 0) {
-      alert('Adicione pelo menos um item com descrição ou valor.');
+      if (validItems.length === 0) {
+        alert('Adicione pelo menos um item com descrição ou valor.');
+        return;
+      }
+
+      const invoiceId = generateId();
+      const totalParc = Math.max(1, installmentsCount);
+      const primeiraData = new Date(firstInstallmentDate + 'T00:00:00');
+
+      validItems.forEach((item) => {
+        const seriesId = generateId(); // série única por item
+
+        for (let p = 0; p < totalParc; p++) {
+          const dataParcela = new Date(primeiraData);
+          dataParcela.setMonth(dataParcela.getMonth() + p);
+
+          const parcela: Transaction = {
+            ...transaction,
+            id: generateId(),
+            date: dataParcela.toISOString().split('T')[0],
+            accountNumber: item.accountNumber,
+            accountName: item.accountName,
+            description:
+              totalParc > 1
+                ? `${item.description} (${p + 1}/${totalParc})`
+                : item.description,
+            quantity: item.quantity,
+            unitValue: item.unitValue,
+            amount: item.amount,
+            invoiceId,
+            seriesId: totalParc > 1 ? seriesId : undefined,
+          };
+
+          const payload: SavePayload = {
+            transaction: parcela,
+            installmentsCount: 1, // já geramos todas as parcelas aqui
+          };
+
+          onSave(payload);
+        }
+      });
+
+      onClose();
       return;
     }
 
-    const invoiceId = generateId(); // Mesmo ID para todos os itens
-    const totalParc = installmentsCount; // total de parcelas
-    const primeiraData = new Date(firstInstallmentDate + 'T00:00:00');
+    // ---------- MODO SIMPLES (igual antes) ----------
+    const payload: SavePayload = {
+      transaction: {
+        ...transaction,
+        id: transactionToEdit?.id || generateId(),
+      },
+      updateScope: isEditingInstallment ? updateScope : undefined,
+      installmentsCount: installmentsCount,
+      firstInstallmentDate: firstInstallmentDate,
+    };
 
-    validItems.forEach((item) => {
-      const seriesId = generateId(); // série única POR ITEM da nota
-
-      for (let p = 0; p < totalParc; p++) {
-        const dataParcela = new Date(primeiraData);
-        dataParcela.setMonth(dataParcela.getMonth() + p);
-
-        const parcela: Transaction = {
-          ...transaction,
-          id: generateId(),
-          date: dataParcela.toISOString().split("T")[0],
-          accountNumber: item.accountNumber,
-          accountName: item.accountName,
-          description: `${item.description} (${p + 1}/${totalParc})`,
-          quantity: item.quantity,
-          unitValue: item.unitValue,
-          amount: item.amount,
-          invoiceId,
-          seriesId,
-        };
-
-        const payload: SavePayload = {
-          transaction: parcela,
-          installmentsCount: 1, // parcelas já geradas aqui
-        };
-
-        onSave(payload);
-      }
-    });
-
+    onSave(payload);
     onClose();
-    return;
-  }
-
-  // ---------------------------------------------------
-  //      MODO SIMPLES  (como já existia)
-  // ---------------------------------------------------
-  const payload: SavePayload = {
-    transaction: {
-      ...transaction,
-      id: transactionToEdit?.id || generateId(),
-    },
-    updateScope: isEditingInstallment ? updateScope : undefined,
-    installmentsCount: installmentsCount,
-    firstInstallmentDate: firstInstallmentDate,
   };
-
-  onSave(payload);
-  onClose();
-};
-
 
   const getBaseDescription = (desc: string) => {
     return desc.replace(/\s\(\d+\/\d+\)$/, '');
@@ -639,8 +639,9 @@ const EntryForm: React.FC<EntryFormProps> = ({
               </div>
 
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Cada linha será salva como um lançamento separado, usando a mesma data,
-                tipo e fornecedor/comprador.
+                Cada linha será salva como um lançamento separado. Se você
+                informar parcelas abaixo, cada item será dividido na mesma
+                quantidade de parcelas.
               </p>
             </div>
           )}
@@ -661,61 +662,60 @@ const EntryForm: React.FC<EntryFormProps> = ({
             />
           </div>
 
-          {!isInvoiceMode && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* CONTROLE DE PARCELAS – AGORA PARA OS DOIS MODOS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="installments"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Nº de Parcelas
+              </label>
+              <input
+                type="number"
+                name="installments"
+                min="1"
+                step="1"
+                value={installmentsCount}
+                onChange={(e) =>
+                  setInstallmentsCount(
+                    Math.max(1, parseInt(e.target.value || '1', 10))
+                  )
+                }
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            {installmentsCount > 1 && !isEditingInstallment && (
               <div>
                 <label
-                  htmlFor="installments"
+                  htmlFor="firstInstallmentDate"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
-                  Nº de Parcelas
+                  Data da 1ª Parcela
                 </label>
                 <input
-                  type="number"
-                  name="installments"
-                  min="1"
-                  step="1"
-                  value={installmentsCount}
-                  onChange={(e) =>
-                    setInstallmentsCount(
-                      Math.max(1, parseInt(e.target.value || '1', 10))
-                    )
-                  }
+                  type="date"
+                  name="firstInstallmentDate"
+                  value={firstInstallmentDate}
+                  onChange={(e) => setFirstInstallmentDate(e.target.value)}
                   className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                  required
                 />
               </div>
-              {installmentsCount > 1 && !isEditingInstallment && (
-                <div>
-                  <label
-                    htmlFor="firstInstallmentDate"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    Data da 1ª Parcela
-                  </label>
-                  <input
-                    type="date"
-                    name="firstInstallmentDate"
-                    value={firstInstallmentDate}
-                    onChange={(e) => setFirstInstallmentDate(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
-                    required
-                  />
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
-          {isInvoiceMode && (
+          {isInvoiceMode && installmentsCount > 1 && (
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              No modo nota fiscal, todos os itens são lançados à vista (1 parcela). Se
-              precisar parcelar, use o modo simples.
+              Serão geradas {installmentsCount} parcelas para cada item desta
+              nota.
             </p>
           )}
 
           {isEditingInstallment && (
             <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
-              Alterar o número de parcelas irá recriar toda a série com os dados do
-              formulário.
+              Alterar o número de parcelas irá recriar toda a série com os dados
+              do formulário.
             </p>
           )}
 
