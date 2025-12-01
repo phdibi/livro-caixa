@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Transaction, TransactionType, Account } from './types';
+import {
+  Transaction,
+  TransactionType,
+  Account,
+  IrCategory,
+  ReceiptStatus,
+} from './types';
 
 interface SavePayload {
   transaction: Transaction;
@@ -53,6 +59,10 @@ const EntryForm: React.FC<EntryFormProps> = ({
     amount: 0,
     payee: '',
     paymentMethod: 'pix',
+    // ----- CAMPOS NOVOS PARA IR -----
+    receiptStatus: ReceiptStatus.NONE,
+    irCategory: IrCategory.NAO_DEDUTIVEL,
+    irNotes: '',
   });
 
   const createEmptyItem = (): InvoiceItem => ({
@@ -87,6 +97,12 @@ const EntryForm: React.FC<EntryFormProps> = ({
         ...transactionToEdit,
         quantity: transactionToEdit.quantity ?? 1,
         unitValue: transactionToEdit.unitValue ?? transactionToEdit.amount,
+        // garantir defaults para registros antigos sem esses campos
+        receiptStatus:
+          transactionToEdit.receiptStatus ?? ReceiptStatus.NONE,
+        irCategory:
+          transactionToEdit.irCategory ?? IrCategory.NAO_DEDUTIVEL,
+        irNotes: transactionToEdit.irNotes ?? '',
       });
       setFirstInstallmentDate(transactionToEdit.date);
       setUpdateScope('single');
@@ -126,9 +142,10 @@ const EntryForm: React.FC<EntryFormProps> = ({
   if (!isOpen) return null;
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    const { name, value } = e.target;
+    const { name, value } = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
     let numericValue: string | number =
       ['amount', 'quantity', 'unitValue'].includes(name) ? parseFloat(value) : value;
 
@@ -140,6 +157,16 @@ const EntryForm: React.FC<EntryFormProps> = ({
         ...prev,
         accountNumber: parseInt(value, 10),
         accountName: selectedAccount?.name || '',
+      }));
+    } else if (name === 'receiptStatus') {
+      setTransaction((prev) => ({
+        ...prev,
+        receiptStatus: value as ReceiptStatus,
+      }));
+    } else if (name === 'irCategory') {
+      setTransaction((prev) => ({
+        ...prev,
+        irCategory: value as IrCategory,
       }));
     } else {
       setTransaction((prev) => ({ ...prev, [name]: numericValue }));
@@ -325,7 +352,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
               <p className="text-sm font-medium text-indigo-800 dark:text-indigo-200 mb-2">
                 Esta é uma transação parcelada. Como deseja salvar as alterações?
               </p>
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0">
                 <label className="flex items-center">
                   <input
                     type="radio"
@@ -420,6 +447,59 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   ))}
                 </select>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label
+                    htmlFor="quantity"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Quantidade
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="quantity"
+                    value={transaction.quantity ?? 1}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="unitValue"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Valor Unitário
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="unitValue"
+                    value={transaction.unitValue ?? 0}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="amount"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Total
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="amount"
+                    value={transaction.amount}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                    required
+                  />
+                </div>
+              </div>
+
               <div>
                 <label
                   htmlFor="description"
@@ -430,268 +510,405 @@ const EntryForm: React.FC<EntryFormProps> = ({
                 <input
                   type="text"
                   name="description"
-                  value={
-                    isEditingInstallment
-                      ? getBaseDescription(transaction.description)
-                      : transaction.description
-                  }
+                  value={getBaseDescription(transaction.description)}
                   onChange={(e) => {
+                    const base = getBaseDescription(transaction.description);
                     const newValue = e.target.value;
-                    setTransaction((prev) => {
-                      if (isEditingInstallment) {
-                        const base = getBaseDescription(prev.description);
-                        const suffix = prev.description.substring(base.length);
-                        return { ...prev, description: newValue + suffix };
-                      }
-                      return { ...prev, description: newValue };
-                    });
+                    const suffix = transaction.description.slice(base.length);
+                    setTransaction((prev) => ({
+                      ...prev,
+                      description: newValue + suffix,
+                    }));
                   }}
                   className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
                   required
                 />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label
-                    htmlFor="quantity"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    Quant.
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    name="quantity"
-                    value={transaction.quantity}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="unitValue"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    Vlr. Unitário
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    name="unitValue"
-                    value={transaction.unitValue}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="amount"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    Valor Total
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    value={transaction.amount}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white font-bold"
-                    required
-                  />
-                </div>
-              </div>
             </>
           )}
 
-          {/* MODO NOTA FISCAL */}
+          {/* MODO NOTA FISCAL - ITENS */}
           {isInvoiceMode && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                Itens da nota fiscal
-              </p>
-              <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-md">
-                <table className="min-w-full text-xs sm:text-sm">
-                  <thead className="bg-gray-100 dark:bg-gray-700">
-                    <tr>
-                      <th className="px-2 py-2 text-left">Conta</th>
-                      <th className="px-2 py-2 text-left">Histórico</th>
-                      <th className="px-2 py-2 text-right">Quant.</th>
-                      <th className="px-2 py-2 text-right">Vlr. Unit.</th>
-                      <th className="px-2 py-2 text-right">Total</th>
-                      <th className="px-2 py-2 text-center">Remover</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-t border-gray-200 dark:border-gray-700"
-                      >
-                        <td className="px-2 py-1">
-                          <select
-                            value={item.accountNumber}
-                            onChange={(e) =>
-                              handleItemChange(
-                                item.id,
-                                'accountNumber',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
-                          >
-                            {accounts.map((acc) => (
-                              <option key={acc.id} value={acc.number}>
-                                {acc.number} - {acc.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            type="text"
-                            value={item.description}
-                            onChange={(e) =>
-                              handleItemChange(
-                                item.id,
-                                'description',
-                                e.target.value
-                              )
-                            }
-                            className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            type="number"
-                            step="any"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleItemChange(
-                                item.id,
-                                'quantity',
-                                e.target.value
-                              )
-                            }
-                            className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            type="number"
-                            step="any"
-                            value={item.unitValue}
-                            onChange={(e) =>
-                              handleItemChange(
-                                item.id,
-                                'unitValue',
-                                e.target.value
-                              )
-                            }
-                            className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
-                          />
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.amount}
-                            onChange={(e) =>
-                              handleItemChange(
-                                item.id,
-                                'amount',
-                                e.target.value
-                              )
-                            }
-                            className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white font-semibold"
-                          />
-                        </td>
-                        <td className="px-2 py-1 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="text-red-600 dark:text-red-400 text-xs sm:text-sm hover:underline"
-                          >
-                            X
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-4">
+              <div className="text-sm text-gray-700 dark:text-gray-300">
+                <p className="font-medium">
+                  Itens da nota fiscal ({items.length})
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Cada item pode ter uma conta diferente. O cabeçalho (tipo,
+                  fornecedor, forma de pagamento, IR) será compartilhado entre os
+                  itens.
+                </p>
               </div>
 
-              <div className="flex justify-between items-center mt-2">
+              <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-md p-3 space-y-2 bg-gray-50 dark:bg-gray-900/40"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        Item
+                      </span>
+                      {items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-xs text-red-500 hover:text-red-600"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Conta
+                        </label>
+                        <select
+                          value={item.accountNumber}
+                          onChange={(e) =>
+                            handleItemChange(
+                              item.id,
+                              'accountNumber',
+                              e.target.value
+                            )
+                          }
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                        >
+                          {accounts.map((acc) => (
+                            <option key={acc.id} value={acc.number}>
+                              {acc.number} - {acc.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Histórico do item
+                        </label>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) =>
+                            handleItemChange(
+                              item.id,
+                              'description',
+                              e.target.value
+                            )
+                          }
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Qtde
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleItemChange(
+                              item.id,
+                              'quantity',
+                              e.target.value
+                            )
+                          }
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Vlr unit.
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.unitValue}
+                          onChange={(e) =>
+                            handleItemChange(
+                              item.id,
+                              'unitValue',
+                              e.target.value
+                            )
+                          }
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Total
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.amount}
+                          onChange={(e) =>
+                            handleItemChange(
+                              item.id,
+                              'amount',
+                              e.target.value
+                            )
+                          }
+                          className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center">
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="px-3 py-1 text-xs sm:text-sm font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-800"
+                  className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
                 >
                   + Adicionar item
                 </button>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                  Total da nota:{' '}
-                  {invoiceTotal.toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL',
-                  })}
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Total NF: R$ {invoiceTotal.toFixed(2)}
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Cada linha será salva como um lançamento separado. Se você
-                informar parcelas abaixo, cada item será dividido na mesma
-                quantidade de parcelas.
-              </p>
+              <div>
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Observação geral da nota (opcional)
+                </label>
+                <input
+                  type="text"
+                  name="description"
+                  value={getBaseDescription(transaction.description)}
+                  onChange={(e) => {
+                    const base = getBaseDescription(transaction.description);
+                    const newValue = e.target.value;
+                    const suffix = transaction.description.slice(base.length);
+                    setTransaction((prev) => ({
+                      ...prev,
+                      description: newValue + suffix,
+                    }));
+                  }}
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                />
+              </div>
             </div>
           )}
 
-          <div>
-            <label
-              htmlFor="payee"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Fornecedor/Comprador
-            </label>
-            <input
-              type="text"
-              name="payee"
-              value={transaction.payee}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
-            />
-          </div>
-
-          {/* CONTROLE DE PARCELAS – AGORA PARA OS DOIS MODOS */}
+          {/* Dados comuns (modo simples + NF) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="installments"
+                htmlFor="payee"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300"
               >
-                Nº de Parcelas
+                Fornecedor / Comprador
               </label>
               <input
-                type="number"
-                name="installments"
-                min="1"
-                step="1"
-                value={installmentsCount}
-                onChange={(e) =>
-                  setInstallmentsCount(
-                    Math.max(1, parseInt(e.target.value || '1', 10))
-                  )
-                }
+                type="text"
+                name="payee"
+                value={transaction.payee}
+                onChange={handleChange}
                 className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
               />
             </div>
-            {installmentsCount > 1 && !isEditingInstallment && (
+            <div>
+              <label
+                htmlFor="paymentMethod"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Forma de Pagamento
+              </label>
+              <select
+                name="paymentMethod"
+                value={transaction.paymentMethod}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+              >
+                <option value="pix">Pix</option>
+                <option value="cartao_credito">Cartão de Crédito</option>
+                <option value="cartao_debito">Cartão de Débito</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="boleto">Boleto</option>
+                <option value="transferencia">Transferência</option>
+                <option value="outro">Outro</option>
+              </select>
+            </div>
+          </div>
+
+          {/* ----- BLOCO NOVO: CONTROLES DE IMPOSTO DE RENDA ----- */}
+          <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+              Imposto de Renda
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Comprovante / Nota fiscal
+                </label>
+                <div className="mt-1 space-y-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="receiptStatus"
+                      value={ReceiptStatus.HAS_RECEIPT}
+                      checked={
+                        transaction.receiptStatus ===
+                        ReceiptStatus.HAS_RECEIPT
+                      }
+                      onChange={handleChange}
+                      className="form-radio text-indigo-600"
+                    />
+                    <span className="ml-2">Tenho a nota / comprovante</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="receiptStatus"
+                      value={ReceiptStatus.LOST_RECEIPT}
+                      checked={
+                        transaction.receiptStatus ===
+                        ReceiptStatus.LOST_RECEIPT
+                      }
+                      onChange={handleChange}
+                      className="form-radio text-indigo-600"
+                    />
+                    <span className="ml-2">Tinha, mas perdi</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="receiptStatus"
+                      value={ReceiptStatus.NOT_REQUIRED}
+                      checked={
+                        transaction.receiptStatus ===
+                        ReceiptStatus.NOT_REQUIRED
+                      }
+                      onChange={handleChange}
+                      className="form-radio text-indigo-600"
+                    />
+                    <span className="ml-2">Não é exigido (ex: isento)</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="receiptStatus"
+                      value={ReceiptStatus.NONE}
+                      checked={
+                        transaction.receiptStatus === ReceiptStatus.NONE ||
+                        !transaction.receiptStatus
+                      }
+                      onChange={handleChange}
+                      className="form-radio text-indigo-600"
+                    />
+                    <span className="ml-2">Não informado</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="irCategory"
+                  className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+                >
+                  Categoria para IR
+                </label>
+                <select
+                  name="irCategory"
+                  value={
+                    transaction.irCategory ?? IrCategory.NAO_DEDUTIVEL
+                  }
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                >
+                  <option value={IrCategory.NAO_DEDUTIVEL}>
+                    Não dedutível / fora da declaração
+                  </option>
+                  <option value={IrCategory.LIVRO_CAIXA}>
+                    Livro-caixa / atividade profissional
+                  </option>
+                  <option value={IrCategory.CARNE_LEAO}>
+                    Carnê-leão / rendimentos PF
+                  </option>
+                  <option value={IrCategory.BENS_DIREITOS}>
+                    Bens e direitos
+                  </option>
+                  <option value={IrCategory.DIVIDAS_ONUS}>
+                    Dívidas e ônus
+                  </option>
+                  <option value={IrCategory.GANHO_CAPITAL}>
+                    Ganho de capital
+                  </option>
+                  <option value={IrCategory.OUTROS}>Outros</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="irNotes"
+                className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+              >
+                Observações para IR (opcional)
+              </label>
+              <textarea
+                name="irNotes"
+                value={transaction.irNotes ?? ''}
+                onChange={handleChange}
+                rows={2}
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs sm:text-sm dark:bg-gray-700 dark:text-white"
+                placeholder="Ex: CPF/CNPJ do prestador, número da nota, se é despesa dedutível, etc."
+              />
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                Essas informações vão te ajudar a filtrar e somar apenas os
+                lançamentos com comprovante válido na hora de gerar relatórios
+                para o Imposto de Renda.
+              </p>
+            </div>
+          </div>
+
+          {/* CONTROLE DE PARCELAS – AGORA PARA OS DOIS MODOS */}
+          <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+              Parcelamento
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="installmentsCount"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Número de parcelas
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  name="installmentsCount"
+                  value={installmentsCount}
+                  onChange={(e) =>
+                    setInstallmentsCount(
+                      Math.max(1, parseInt(e.target.value || '1', 10))
+                    )
+                  }
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
+                />
+              </div>
               <div>
                 <label
                   htmlFor="firstInstallmentDate"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
-                  Data da 1ª Parcela
+                  Data da 1ª parcela
                 </label>
                 <input
                   type="date"
@@ -699,37 +916,28 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   value={firstInstallmentDate}
                   onChange={(e) => setFirstInstallmentDate(e.target.value)}
                   className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-white"
-                  required
                 />
               </div>
-            )}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Se você usar mais de 1 parcela no modo nota fiscal, serão criados
+              vários lançamentos, um para cada parcela de cada item, já com
+              descrição numerada (1/3, 2/3, ...).
+            </p>
           </div>
 
-          {isInvoiceMode && installmentsCount > 1 && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Serão geradas {installmentsCount} parcelas para cada item desta
-              nota.
-            </p>
-          )}
-
-          {isEditingInstallment && (
-            <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
-              Alterar o número de parcelas irá recriar toda a série com os dados
-              do formulário.
-            </p>
-          )}
-
-          <div className="flex justify-end space-x-3 pt-2">
+          {/* BOTÕES */}
+          <div className="flex justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500"
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
             >
               Salvar
             </button>
