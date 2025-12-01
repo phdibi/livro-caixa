@@ -807,7 +807,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
     </label>
 
   </div>
-</div>
 
               </div>
 
