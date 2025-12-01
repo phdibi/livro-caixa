@@ -1,4 +1,3 @@
-
 export enum TransactionType {
   ENTRADA = 'Entrada',
   SAIDA = 'Saida',
@@ -16,7 +15,8 @@ export interface Transaction {
   amount: number;
   payee: string; // Fornecedor / Comprador
   paymentMethod: string;
-  seriesId?: string; // Para agrupar parcelas
+  seriesId?: string;     // Para agrupar parcelas
+  invoiceId?: string;    // Para agrupar itens de uma mesma nota fiscal
 }
 
 export interface Account {

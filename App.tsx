@@ -508,72 +508,80 @@ const App: React.FC = () => {
         </div>
     );
 
-    const ListView = () => (
-        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Data</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Conta</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Histórico</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Valor</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {sortedTransactions.map(t => (
-                            <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">{new Date(t.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{t.accountNumber} - {t.accountName}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">{t.description}</td>
-                                <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${t.type === TransactionType.ENTRADA ? 'text-green-500' : 'text-red-500'}`}>
-                                    {t.type === TransactionType.SAIDA && '- '}{formatCurrency(t.amount)}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                    <button onClick={() => handleEditTransaction(t)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-3"><EditIcon className="w-5 h-5"/></button>
-                                    <button onClick={() => handleDeleteTransaction(t.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"><TrashIcon className="w-5 h-5"/></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+    const ListView = () => {
+  // Mapeia quantos lançamentos existem por invoiceId
+  const invoiceCounts: Record<string, number> = {};
+  sortedTransactions.forEach((t) => {
+    if (t.invoiceId) {
+      invoiceCounts[t.invoiceId] = (invoiceCounts[t.invoiceId] || 0) + 1;
+    }
+  });
 
-            {/* Mobile Card View */}
-            <div className="md:hidden">
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {sortedTransactions.map(t => (
-                        <li key={t.id} className="p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <div className="flex justify-between items-start mb-1">
-                                <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
-                                    {new Date(t.date).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
-                                </div>
-                                <div className={`text-sm font-bold ${t.type === TransactionType.ENTRADA ? 'text-green-500' : 'text-red-500'}`}>
-                                    {t.type === TransactionType.SAIDA && '- '}{formatCurrency(t.amount)}
-                                </div>
-                            </div>
-                            <div className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-                                {t.description}
-                            </div>
-                            <div className="flex justify-between items-end">
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    {t.accountNumber} - {t.accountName} <br/>
-                                    <span className="italic">{t.payee}</span>
-                                </div>
-                                <div className="flex space-x-3">
-                                    <button onClick={() => handleEditTransaction(t)} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"><EditIcon className="w-5 h-5"/></button>
-                                    <button onClick={() => handleDeleteTransaction(t.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"><TrashIcon className="w-5 h-5"/></button>
-                                </div>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            {sortedTransactions.length === 0 && <p className="text-center py-10 text-gray-500 dark:text-gray-400">Nenhum lançamento encontrado para os filtros selecionados.</p>}
-        </div>
-    );
+  const isInInvoiceGroup = (t: Transaction) =>
+    !!t.invoiceId && (invoiceCounts[t.invoiceId] ?? 0) > 1;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Data
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Conta
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Histórico
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Valor
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Ações
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {sortedTransactions.map((t) => {
+              const inGroup = isInInvoiceGroup(t);
+              const valueClass =
+                t.type === TransactionType.ENTRADA
+                  ? 'text-green-500'
+                  : 'text-red-500';
+
+              return (
+                <tr
+                  key={t.id}
+                  className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                    inGroup
+                      ? 'bg-indigo-50/70 dark:bg-indigo-900/40 border-l-4 border-indigo-400'
+                      : ''
+                  }`}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                    {new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {t.accountNumber} - {t.accountName}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                    <div className="flex flex-col gap-1">
+                      <span>{t.description}</span>
+                      {t.payee && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {t.payee}
+                        </span>
+                      )}
+                      {inGroup && t.invoiceId && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 w-fit">
+                          NF com {invoiceCounts[t.invoiceId]} itens
+                        </span>
+                      )}
+                    </div>
+
 
     if (authLoading) return <div className="flex h-screen items-center justify-center text-gray-500 dark:text-gray-400">Carregando...</div>;
     if (!user) return <Login />;

@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Transaction, TransactionType, Account } from './types';
 
 interface SavePayload {
-    transaction: Transaction;
-    installmentsCount?: number;
-    firstInstallmentDate?: string;
-    updateScope?: 'single' | 'future';
+  transaction: Transaction;
+  installmentsCount?: number;
+  firstInstallmentDate?: string;
+  updateScope?: 'single' | 'future';
 }
 
 interface EntryFormProps {
@@ -28,10 +28,10 @@ type InvoiceItem = {
 };
 
 const generateId = () => {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
 const EntryForm: React.FC<EntryFormProps> = ({
@@ -81,7 +81,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (transactionToEdit) {
-        // Edição de um lançamento existente (modo simples)
+        // Edição de lançamento existente
         setTransaction({
           ...transactionToEdit,
           quantity: transactionToEdit.quantity ?? 1,
@@ -89,7 +89,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
         });
         setFirstInstallmentDate(transactionToEdit.date);
         setUpdateScope('single');
-        setIsInvoiceMode(false); // não permitir nota fiscal ao editar
+        setIsInvoiceMode(false);
         setItems([createEmptyItem()]);
 
         if (isEditingInstallment) {
@@ -112,9 +112,9 @@ const EntryForm: React.FC<EntryFormProps> = ({
     }
   }, [transactionToEdit, accounts, isOpen, transactions, isEditingInstallment]);
 
-  // Cálculo automático do valor total no modo simples
+  // Atualiza automaticamente o total no modo simples
   useEffect(() => {
-    if (isInvoiceMode) return; // no modo NF, quem manda é a lista de itens
+    if (isInvoiceMode) return;
 
     const qty = transaction.quantity || 0;
     const unitVal = transaction.unitValue || 0;
@@ -146,7 +146,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
     }
   };
 
-  // --- Controle dos itens de nota fiscal ---
+  // -------- Itens da nota fiscal --------
 
   const handleItemChange = (
     id: string,
@@ -176,7 +176,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
           newItem.description = value;
         }
 
-        // Recalcula o total se for quantidade ou unitário
         if (field === 'quantity' || field === 'unitValue') {
           newItem.amount = (newItem.quantity || 0) * (newItem.unitValue || 0);
         }
@@ -200,56 +199,78 @@ const EntryForm: React.FC<EntryFormProps> = ({
   const invoiceTotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    // --- MODO NOTA FISCAL: cria vários lançamentos ---
-    if (isInvoiceMode && !isEditingInstallment) {
-      const validItems = items.filter(
-        (item) =>
-          item.description.trim() !== '' ||
-          (!!item.amount && !isNaN(item.amount))
-      );
+  // ---------------------------------------------------
+  //      MODO NOTA FISCAL  (com parcelamento)
+  // ---------------------------------------------------
+  if (isInvoiceMode && !isEditingInstallment) {
+    const validItems = items.filter(
+      (item) =>
+        item.description.trim() !== '' ||
+        (!!item.amount && !isNaN(item.amount))
+    );
 
-      if (validItems.length === 0) {
-        alert('Adicione pelo menos um item com descrição ou valor.');
-        return;
-      }
-
-      validItems.forEach((item) => {
-        const tx: Transaction = {
-          ...transaction,
-          // cada item vai para a conta/categoria própria
-          accountNumber: item.accountNumber,
-          accountName: item.accountName,
-          description: item.description || transaction.description,
-          quantity: item.quantity,
-          unitValue: item.unitValue,
-          amount: item.amount,
-        };
-
-        const payload: SavePayload = {
-          transaction: { ...tx, id: generateId() },
-          // em modo NF, para simplificar, sempre 1 parcela
-          installmentsCount: 1,
-        };
-
-        onSave(payload);
-      });
-
-      onClose();
+    if (validItems.length === 0) {
+      alert('Adicione pelo menos um item com descrição ou valor.');
       return;
     }
 
-    // --- MODO SIMPLES (comportamento antigo) ---
-    const payload: SavePayload = {
-      transaction: { ...transaction, id: transactionToEdit?.id || generateId() },
-      updateScope: isEditingInstallment ? updateScope : undefined,
-      installmentsCount: installmentsCount,
-      firstInstallmentDate: firstInstallmentDate,
-    };
-    onSave(payload);
+    const invoiceId = generateId(); // Mesmo ID para todos os itens
+    const totalParc = installmentsCount; // total de parcelas
+    const primeiraData = new Date(firstInstallmentDate + 'T00:00:00');
+
+    validItems.forEach((item) => {
+      const seriesId = generateId(); // série única POR ITEM da nota
+
+      for (let p = 0; p < totalParc; p++) {
+        const dataParcela = new Date(primeiraData);
+        dataParcela.setMonth(dataParcela.getMonth() + p);
+
+        const parcela: Transaction = {
+          ...transaction,
+          id: generateId(),
+          date: dataParcela.toISOString().split("T")[0],
+          accountNumber: item.accountNumber,
+          accountName: item.accountName,
+          description: `${item.description} (${p + 1}/${totalParc})`,
+          quantity: item.quantity,
+          unitValue: item.unitValue,
+          amount: item.amount,
+          invoiceId,
+          seriesId,
+        };
+
+        const payload: SavePayload = {
+          transaction: parcela,
+          installmentsCount: 1, // parcelas já geradas aqui
+        };
+
+        onSave(payload);
+      }
+    });
+
     onClose();
+    return;
+  }
+
+  // ---------------------------------------------------
+  //      MODO SIMPLES  (como já existia)
+  // ---------------------------------------------------
+  const payload: SavePayload = {
+    transaction: {
+      ...transaction,
+      id: transactionToEdit?.id || generateId(),
+    },
+    updateScope: isEditingInstallment ? updateScope : undefined,
+    installmentsCount: installmentsCount,
+    firstInstallmentDate: firstInstallmentDate,
   };
+
+  onSave(payload);
+  onClose();
+};
+
 
   const getBaseDescription = (desc: string) => {
     return desc.replace(/\s\(\d+\/\d+\)$/, '');
@@ -274,7 +295,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
                 const enabled = e.target.checked;
                 setIsInvoiceMode(enabled);
                 if (enabled) {
-                  // quando liga o modo NF, aproveita o que já está digitado no formulário
                   setItems([
                     {
                       id: generateId(),
@@ -340,7 +360,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Cabeçalho comum da transação */}
+          {/* Cabeçalho comum */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label
@@ -377,6 +397,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
             </div>
           </div>
 
+          {/* MODO SIMPLES */}
           {!isInvoiceMode && (
             <>
               <div>
@@ -483,6 +504,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
             </>
           )}
 
+          {/* MODO NOTA FISCAL */}
           {isInvoiceMode && (
             <div className="space-y-2">
               <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
@@ -502,12 +524,19 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   </thead>
                   <tbody>
                     {items.map((item) => (
-                      <tr key={item.id} className="border-t border-gray-200 dark:border-gray-700">
+                      <tr
+                        key={item.id}
+                        className="border-t border-gray-200 dark:border-gray-700"
+                      >
                         <td className="px-2 py-1">
                           <select
                             value={item.accountNumber}
                             onChange={(e) =>
-                              handleItemChange(item.id, 'accountNumber', e.target.value)
+                              handleItemChange(
+                                item.id,
+                                'accountNumber',
+                                e.target.value
+                              )
                             }
                             className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
                           >
@@ -523,7 +552,11 @@ const EntryForm: React.FC<EntryFormProps> = ({
                             type="text"
                             value={item.description}
                             onChange={(e) =>
-                              handleItemChange(item.id, 'description', e.target.value)
+                              handleItemChange(
+                                item.id,
+                                'description',
+                                e.target.value
+                              )
                             }
                             className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
                           />
@@ -534,7 +567,11 @@ const EntryForm: React.FC<EntryFormProps> = ({
                             step="any"
                             value={item.quantity}
                             onChange={(e) =>
-                              handleItemChange(item.id, 'quantity', e.target.value)
+                              handleItemChange(
+                                item.id,
+                                'quantity',
+                                e.target.value
+                              )
                             }
                             className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
                           />
@@ -545,7 +582,11 @@ const EntryForm: React.FC<EntryFormProps> = ({
                             step="any"
                             value={item.unitValue}
                             onChange={(e) =>
-                              handleItemChange(item.id, 'unitValue', e.target.value)
+                              handleItemChange(
+                                item.id,
+                                'unitValue',
+                                e.target.value
+                              )
                             }
                             className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
                           />
@@ -556,7 +597,11 @@ const EntryForm: React.FC<EntryFormProps> = ({
                             step="0.01"
                             value={item.amount}
                             onChange={(e) =>
-                              handleItemChange(item.id, 'amount', e.target.value)
+                              handleItemChange(
+                                item.id,
+                                'amount',
+                                e.target.value
+                              )
                             }
                             className="w-full text-right rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white font-semibold"
                           />
