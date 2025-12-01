@@ -753,67 +753,63 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Comprovante / Nota fiscal
-                </label>
-                <div className="mt-1 space-y-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.HAS_RECEIPT}
-                      checked={
-                        transaction.receiptStatus ===
-                        ReceiptStatus.HAS_RECEIPT
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Tenho a nota / comprovante</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.LOST_RECEIPT}
-                      checked={
-                        transaction.receiptStatus ===
-                        ReceiptStatus.LOST_RECEIPT
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Tinha, mas perdi</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.NOT_REQUIRED}
-                      checked={
-                        transaction.receiptStatus ===
-                        ReceiptStatus.NOT_REQUIRED
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Não é exigido (ex: isento)</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.NONE}
-                      checked={
-                        transaction.receiptStatus === ReceiptStatus.NONE ||
-                        !transaction.receiptStatus
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Não informado</span>
-                  </label>
-                </div>
+  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+    Comprovante / Nota fiscal
+  </label>
+
+  <div className="mt-1 space-y-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="receiptStatus"
+        value={ReceiptStatus.HAS_BUT_NOT_ATTACHED}
+        checked={transaction.receiptStatus === ReceiptStatus.HAS_BUT_NOT_ATTACHED}
+        onChange={handleChange}
+        className="form-radio text-indigo-600"
+      />
+      <span className="ml-2">Tenho a nota / comprovante</span>
+    </label>
+
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="receiptStatus"
+        value={ReceiptStatus.LOST}
+        checked={transaction.receiptStatus === ReceiptStatus.LOST}
+        onChange={handleChange}
+        className="form-radio text-indigo-600"
+      />
+      <span className="ml-2">Tinha, mas perdi</span>
+    </label>
+
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="receiptStatus"
+        value={ReceiptStatus.NOT_REQUIRED}
+        checked={transaction.receiptStatus === ReceiptStatus.NOT_REQUIRED}
+        onChange={handleChange}
+        className="form-radio text-indigo-600"
+      />
+      <span className="ml-2">Não é exigido (ex: isento)</span>
+    </label>
+
+    <label className="flex items-center">
+      <input
+        type="radio"
+        name="receiptStatus"
+        value={ReceiptStatus.NONE}
+        checked={transaction.receiptStatus === ReceiptStatus.NONE}
+        onChange={handleChange}
+        className="form-radio text-indigo-600"
+      />
+      <span className="ml-2">Não informado</span>
+    </label>
+
+  </div>
+</div>
+
               </div>
 
               <div>

@@ -12,9 +12,11 @@ export enum TransactionType {
  * - ATTACHED: comprovante anexado (com metadata nos campos de recibo)
  */
 export enum ReceiptStatus {
-  NONE = 'none',
-  HAS_BUT_NOT_ATTACHED = 'has-but-not-attached',
-  ATTACHED = 'attached',
+  NONE = 'none',                      // Não informado / não tenho comprovante
+  HAS_BUT_NOT_ATTACHED = 'has-but-not-attached', // Tenho mas não anexei
+  ATTACHED = 'attached',              // Anexei o arquivo
+  LOST = 'lost',                      // Tinha mas perdi
+  NOT_REQUIRED = 'not-required',      // Isento de comprovante
 }
 
 /**
