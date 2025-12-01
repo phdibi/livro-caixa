@@ -75,6 +75,10 @@ const formatReceiptStatusLabel = (status?: ReceiptStatus): string => {
 
 const formatIrCategoryLabel = (cat?: IrCategory): string => {
   switch (cat) {
+    case IrCategory.SAUDE:
+      return 'Saúde';
+    case IrCategory.EDUCACAO:
+      return 'Educação';
     case IrCategory.LIVRO_CAIXA:
       return 'Livro-caixa / atividade';
     case IrCategory.CARNE_LEAO:
@@ -85,6 +89,8 @@ const formatIrCategoryLabel = (cat?: IrCategory): string => {
       return 'Dívidas e ônus';
     case IrCategory.GANHO_CAPITAL:
       return 'Ganho de capital';
+    case IrCategory.ATIVIDADE_RURAL:
+      return 'Atividade Rural';
     case IrCategory.OUTROS:
       return 'Outros';
     case IrCategory.NAO_DEDUTIVEL:

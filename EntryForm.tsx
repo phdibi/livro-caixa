@@ -688,6 +688,8 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   <option value={IrCategory.NAO_DEDUTIVEL}>
                     Não dedutível / Geral
                   </option>
+                  <option value={IrCategory.SAUDE}>Saúde</option>
+                  <option value={IrCategory.EDUCACAO}>Educação</option>
                   <option value={IrCategory.LIVRO_CAIXA}>Livro-caixa</option>
                   <option value={IrCategory.CARNE_LEAO}>Carnê-Leão</option>
                   <option value={IrCategory.BENS_DIREITOS}>
@@ -699,6 +701,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   <option value={IrCategory.GANHO_CAPITAL}>
                     Ganho de capital
                   </option>
+                  <option value={IrCategory.ATIVIDADE_RURAL}>Atividade Rural</option>
                   <option value={IrCategory.OUTROS}>Outros</option>
                 </select>
               </div>
