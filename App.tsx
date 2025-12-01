@@ -56,6 +56,9 @@ const App: React.FC = () => {
         endDate: '',
     });
 
+    // NOVO: controle de ordenação (ascendente/descendente) por data
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
     // Callback para recarregar dados do cache quando houver mudanças
     const reloadFromCache = useCallback(async () => {
         if (!user) return;
@@ -473,9 +476,13 @@ const App: React.FC = () => {
         }
     };
 
+    // NOVO: usa sortOrder para ordenar crescente/decrescente por data
     const sortedTransactions = useMemo(() => {
-        return [...filteredTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [filteredTransactions]);
+        const sorted = [...filteredTransactions].sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+        return sortOrder === 'asc' ? sorted : sorted.reverse();
+    }, [filteredTransactions, sortOrder]);
 
     const formatCurrency = (value: number) => {
         return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -509,218 +516,228 @@ const App: React.FC = () => {
     );
 
     // -------- LISTVIEW COM DESTAQUE DE NOTA FISCAL --------
-      // -------- LISTVIEW COM DESTAQUE DE NOTA FISCAL --------
-  const ListView = () => {
-    // Estatísticas por invoiceId
-    type InvoiceStats = {
-      transactionCount: number;
-      itemKeys: Set<string>;
-    };
-
-    const invoiceStats: Record<string, InvoiceStats> = {};
-
-    sortedTransactions.forEach((t) => {
-      if (!t.invoiceId) return;
-
-      if (!invoiceStats[t.invoiceId]) {
-        invoiceStats[t.invoiceId] = {
-          transactionCount: 0,
-          itemKeys: new Set<string>(),
+    const ListView = () => {
+        // Estatísticas por invoiceId
+        type InvoiceStats = {
+            transactionCount: number;
+            itemKeys: Set<string>;
         };
-      }
 
-      const stats = invoiceStats[t.invoiceId];
-      stats.transactionCount++;
+        const invoiceStats: Record<string, InvoiceStats> = {};
 
-      // Usamos seriesId quando existir (parcelas de um mesmo item)
-      // senão, usamos combinação conta+descrição como "identidade" do item.
-      const key = t.seriesId || `${t.accountNumber}-${t.description}`;
-      stats.itemKeys.add(key);
-    });
+        sortedTransactions.forEach((t) => {
+            if (!t.invoiceId) return;
 
-    const getInvoiceStats = (t: Transaction) =>
-      t.invoiceId ? invoiceStats[t.invoiceId] : undefined;
+            if (!invoiceStats[t.invoiceId]) {
+                invoiceStats[t.invoiceId] = {
+                    transactionCount: 0,
+                    itemKeys: new Set<string>(),
+                };
+            }
 
-    const isInInvoiceGroup = (t: Transaction) => {
-      const stats = getInvoiceStats(t);
-      return !!stats && stats.itemKeys.size > 1;
+            const stats = invoiceStats[t.invoiceId];
+            stats.transactionCount++;
+
+            // Usamos seriesId quando existir (parcelas de um mesmo item)
+            // senão, usamos combinação conta+descrição como "identidade" do item.
+            const key = t.seriesId || `${t.accountNumber}-${t.description}`;
+            stats.itemKeys.add(key);
+        });
+
+        const getInvoiceStats = (t: Transaction) =>
+            t.invoiceId ? invoiceStats[t.invoiceId] : undefined;
+
+        const isInInvoiceGroup = (t: Transaction) => {
+            const stats = getInvoiceStats(t);
+            return !!stats && stats.itemKeys.size > 1;
+        };
+
+        return (
+            <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    {/* NOVO: botão de ordenação por data */}
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))
+                                        }
+                                        className="flex items-center gap-1 select-none"
+                                    >
+                                        <span>Data</span>
+                                        <span className="text-[10px]">
+                                            {sortOrder === 'desc' ? '▼' : '▲'}
+                                        </span>
+                                    </button>
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    Conta
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    Histórico
+                                </th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    Valor
+                                </th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    Ações
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {sortedTransactions.map((t) => {
+                                const stats = getInvoiceStats(t);
+                                const inGroup = !!stats && stats.transactionCount > 1;
+                                const itemCount = stats ? stats.itemKeys.size : 1;
+                                const valueClass =
+                                    t.type === TransactionType.ENTRADA
+                                        ? 'text-green-500'
+                                        : 'text-red-500';
+
+                                return (
+                                    <tr
+                                        key={t.id}
+                                        className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                                            inGroup
+                                                ? 'bg-indigo-50/70 dark:bg-indigo-900/40 border-l-4 border-indigo-400'
+                                                : ''
+                                        }`}
+                                    >
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                                            {new Date(t.date).toLocaleDateString('pt-BR', {
+                                                timeZone: 'UTC',
+                                            })}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                            {t.accountNumber} - {t.accountName}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                                            <div className="flex flex-col gap-1">
+                                                <span>{t.description}</span>
+                                                {t.payee && (
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {t.payee}
+                                                    </span>
+                                                )}
+                                                {inGroup && stats && (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 w-fit">
+                                                        NF com {itemCount} itens ({stats.transactionCount}{' '}
+                                                        lanç.)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td
+                                            className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${valueClass}`}
+                                        >
+                                            {t.type === TransactionType.SAIDA && '- '}
+                                            {formatCurrency(t.amount)}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                            <button
+                                                onClick={() => handleEditTransaction(t)}
+                                                className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-3"
+                                            >
+                                                <EditIcon className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteTransaction(t.id)}
+                                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden">
+                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {sortedTransactions.map((t) => {
+                            const stats = getInvoiceStats(t);
+                            const inGroup = !!stats && stats.transactionCount > 1;
+                            const itemCount = stats ? stats.itemKeys.size : 1;
+                            const valueClass =
+                                t.type === TransactionType.ENTRADA
+                                    ? 'text-green-500'
+                                    : 'text-red-500';
+
+                            return (
+                                <li
+                                    key={t.id}
+                                    className={`p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                                        inGroup
+                                            ? 'border-l-4 border-indigo-400 bg-indigo-50/70 dark:bg-indigo-900/40'
+                                            : ''
+                                    }`}
+                                >
+                                    <div className="flex justify-between items-start mb-1">
+                                        <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
+                                            {new Date(t.date).toLocaleDateString('pt-BR', {
+                                                timeZone: 'UTC',
+                                            })}
+                                        </div>
+                                        <div className={`text-sm font-bold ${valueClass}`}>
+                                            {t.type === TransactionType.SAIDA && '- '}
+                                            {formatCurrency(t.amount)}
+                                        </div>
+                                    </div>
+                                    <div className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+                                        {t.description}
+                                    </div>
+                                    {t.payee && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                            {t.payee}
+                                        </div>
+                                    )}
+                                    {inGroup && stats && (
+                                        <div className="mb-2">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                                                NF com {itemCount} itens ({stats.transactionCount} lanç.)
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-end">
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {t.accountNumber} - {t.accountName}
+                                        </div>
+                                        <div className="flex space-x-3">
+                                            <button
+                                                onClick={() => handleEditTransaction(t)}
+                                                className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                            >
+                                                <EditIcon className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteTransaction(t.id)}
+                                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+
+                {sortedTransactions.length === 0 && (
+                    <p className="text-center py-10 text-gray-500 dark:text-gray-400">
+                        Nenhum lançamento encontrado para os filtros selecionados.
+                    </p>
+                )}
+            </div>
+        );
     };
-
-    return (
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Data
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Conta
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Histórico
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Valor
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Ações
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {sortedTransactions.map((t) => {
-                const stats = getInvoiceStats(t);
-                const inGroup = !!stats && stats.transactionCount > 1;
-                const itemCount = stats ? stats.itemKeys.size : 1;
-                const valueClass =
-                  t.type === TransactionType.ENTRADA
-                    ? 'text-green-500'
-                    : 'text-red-500';
-
-                return (
-                  <tr
-                    key={t.id}
-                    className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                      inGroup
-                        ? 'bg-indigo-50/70 dark:bg-indigo-900/40 border-l-4 border-indigo-400'
-                        : ''
-                    }`}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                      {new Date(t.date).toLocaleDateString('pt-BR', {
-                        timeZone: 'UTC',
-                      })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {t.accountNumber} - {t.accountName}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                      <div className="flex flex-col gap-1">
-                        <span>{t.description}</span>
-                        {t.payee && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {t.payee}
-                          </span>
-                        )}
-                        {inGroup && stats && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 w-fit">
-                            NF com {itemCount} itens ({stats.transactionCount}{' '}
-                            lanç.)
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td
-                      className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${valueClass}`}
-                    >
-                      {t.type === TransactionType.SAIDA && '- '}
-                      {formatCurrency(t.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                      <button
-                        onClick={() => handleEditTransaction(t)}
-                        className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-3"
-                      >
-                        <EditIcon className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTransaction(t.id)}
-                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Card View */}
-        <div className="md:hidden">
-          <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-            {sortedTransactions.map((t) => {
-              const stats = getInvoiceStats(t);
-              const inGroup = !!stats && stats.transactionCount > 1;
-              const itemCount = stats ? stats.itemKeys.size : 1;
-              const valueClass =
-                t.type === TransactionType.ENTRADA
-                  ? 'text-green-500'
-                  : 'text-red-500';
-
-              return (
-                <li
-                  key={t.id}
-                  className={`p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                    inGroup
-                      ? 'border-l-4 border-indigo-400 bg-indigo-50/70 dark:bg-indigo-900/40'
-                      : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="text-sm text-gray-500 dark:text-gray-400 font-medium">
-                      {new Date(t.date).toLocaleDateString('pt-BR', {
-                        timeZone: 'UTC',
-                      })}
-                    </div>
-                    <div className={`text-sm font-bold ${valueClass}`}>
-                      {t.type === TransactionType.SAIDA && '- '}
-                      {formatCurrency(t.amount)}
-                    </div>
-                  </div>
-                  <div className="text-base font-semibold text-gray-900 dark:text-white mb-1">
-                    {t.description}
-                  </div>
-                  {t.payee && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      {t.payee}
-                    </div>
-                  )}
-                  {inGroup && stats && (
-                    <div className="mb-2">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
-                        NF com {itemCount} itens ({stats.transactionCount} lanç.)
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-end">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {t.accountNumber} - {t.accountName}
-                    </div>
-                    <div className="flex space-x-3">
-                      <button
-                        onClick={() => handleEditTransaction(t)}
-                        className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
-                      >
-                        <EditIcon className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTransaction(t.id)}
-                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
-        {sortedTransactions.length === 0 && (
-          <p className="text-center py-10 text-gray-500 dark:text-gray-400">
-            Nenhum lançamento encontrado para os filtros selecionados.
-          </p>
-        )}
-      </div>
-    );
-  };
-
 
     if (authLoading) return <div className="flex h-screen items-center justify-center text-gray-500 dark:text-gray-400">Carregando...</div>;
     if (!user) return <Login />;
