@@ -23,22 +23,15 @@ interface EntryFormProps {
   transactions: Transaction[];
 }
 
-type InvoiceItem = {
+interface InvoiceItem {
   id: string;
-  accountNumber: number;
-  accountName: string;
   description: string;
   quantity: number;
   unitValue: number;
   amount: number;
-};
-
-const generateId = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return Date.now().toString(36) + Math.random().toString(36).substring(2);
-};
+  accountNumber: string;
+  accountName: string;
+}
 
 const EntryForm: React.FC<EntryFormProps> = ({
   isOpen,
@@ -48,38 +41,45 @@ const EntryForm: React.FC<EntryFormProps> = ({
   accounts,
   transactions,
 }) => {
-  const getInitialState = (): Omit<Transaction, 'id'> => ({
+  const [transaction, setTransaction] = useState<Transaction>({
+    id: '',
+    description: '',
+    type: 'expense',
+    amount: 0,
     date: new Date().toISOString().split('T')[0],
-    type: TransactionType.SAIDA,
-    accountNumber: accounts.length > 0 ? accounts[0].number : 0,
-    accountName: accounts.length > 0 ? accounts[0].name : '',
-    description: '',
-    quantity: 1,
-    unitValue: 0,
-    amount: 0,
+    accountNumber: '',
+    accountName: '',
+    category: '',
+    subcategory: '',
     payee: '',
-    paymentMethod: 'pix',
-    receiptStatus: ReceiptStatus.NONE,
-    irCategory: IrCategory.NAO_DEDUTIVEL,
-    irNotes: '',
-  });
-
-  const createEmptyItem = (): InvoiceItem => ({
-    id: generateId(),
-    accountNumber: accounts.length > 0 ? accounts[0].number : 0,
-    accountName: accounts.length > 0 ? accounts[0].name : '',
-    description: '',
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     quantity: 1,
     unitValue: 0,
-    amount: 0,
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    isInstallment: false,
+    installmentNumber: undefined,
+    totalInstallments: undefined,
+    seriesId: undefined,
+    irRelevant: false,
+    irCategory: 'NAO_DEDUTIVEL',
+    receiptStatus: 'NAO_INFORMADO',
+    irNotes: '',
+    irReceiptNumber: '',
+    irServiceType: '',
+    irProviderType: 'PESSOA_FISICA',
+    irProviderId: '',
+    irProviderName: '',
   });
 
-  const [transaction, setTransaction] = useState(getInitialState());
   const [installmentsCount, setInstallmentsCount] = useState(1);
   const [firstInstallmentDate, setFirstInstallmentDate] = useState(
     new Date().toISOString().split('T')[0]
   );
   const [updateScope, setUpdateScope] = useState<'single' | 'future'>('single');
+  const [isInstallmentMode, setIsInstallmentMode] = useState(false);
 
   const [isInvoiceMode, setIsInvoiceMode] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([createEmptyItem()]);
@@ -94,34 +94,84 @@ const EntryForm: React.FC<EntryFormProps> = ({
         ...transactionToEdit,
         quantity: transactionToEdit.quantity ?? 1,
         unitValue: transactionToEdit.unitValue ?? transactionToEdit.amount,
-        receiptStatus: transactionToEdit.receiptStatus ?? ReceiptStatus.NONE,
-        irCategory: transactionToEdit.irCategory ?? IrCategory.NAO_DEDUTIVEL,
-        irNotes: transactionToEdit.irNotes ?? '',
+        receiptStatus: transactionToEdit.receiptStatus || 'NAO_INFORMADO',
+        irCategory: transactionToEdit.irCategory || 'NAO_DEDUTIVEL',
+        irProviderType: transactionToEdit.irProviderType || 'PESSOA_FISICA',
       });
 
-      setFirstInstallmentDate(transactionToEdit.date);
-      setUpdateScope('single');
-      setIsInvoiceMode(false);
-      setItems([createEmptyItem()]);
+      if (transactionToEdit.isInstallment && transactionToEdit.seriesId) {
+        setIsInstallmentMode(true);
 
-      if (isEditingInstallment) {
-        const totalSeries = transactions.filter(
+        const seriesTransactions = transactions.filter(
           (t) => t.seriesId === transactionToEdit.seriesId
-        ).length;
-        setInstallmentsCount(totalSeries || 1);
-      } else setInstallmentsCount(1);
+        );
+        const totalInstallments =
+          transactionToEdit.totalInstallments || seriesTransactions.length;
+
+        setInstallmentsCount(totalInstallments);
+
+        const firstTransaction = seriesTransactions.reduce((prev, curr) =>
+          curr.installmentNumber && prev.installmentNumber
+            ? curr.installmentNumber < prev.installmentNumber
+              ? curr
+              : prev
+            : prev
+        );
+
+        setFirstInstallmentDate(
+          firstTransaction.date || new Date().toISOString().split('T')[0]
+        );
+      } else {
+        setIsInstallmentMode(false);
+      }
+
+      if (transactionToEdit.items && transactionToEdit.items.length > 0) {
+        setIsInvoiceMode(true);
+        setItems(
+          transactionToEdit.items.map((item) => ({
+            id: item.id || generateId(),
+            description: item.description,
+            quantity: item.quantity,
+            unitValue: item.unitValue,
+            amount: item.amount,
+            accountNumber: item.accountNumber,
+            accountName: item.accountName,
+          }))
+        );
+      } else {
+        setIsInvoiceMode(false);
+        setItems([createEmptyItem()]);
+      }
     } else {
-      const initial = getInitialState();
-      setTransaction(initial);
+      setTransaction((prev) => ({
+        ...prev,
+        id: generateId(),
+        date: new Date().toISOString().split('T')[0],
+        year: new Date().getFullYear(),
+        month: new Date().getMonth() + 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        quantity: 1,
+        unitValue: 0,
+        isInstallment: false,
+        installmentNumber: undefined,
+        totalInstallments: undefined,
+        seriesId: undefined,
+        receiptStatus: 'NAO_INFORMADO',
+        irCategory: 'NAO_DEDUTIVEL',
+        irProviderType: 'PESSOA_FISICA',
+      }));
       setInstallmentsCount(1);
-      setFirstInstallmentDate(initial.date);
+      setFirstInstallmentDate(new Date().toISOString().split('T')[0]);
+      setUpdateScope('single');
+      setIsInstallmentMode(false);
       setIsInvoiceMode(false);
       setItems([createEmptyItem()]);
     }
-  }, [isOpen, transactionToEdit, accounts, transactions, isEditingInstallment]);
+  }, [isOpen, transactionToEdit, transactions]);
 
   useEffect(() => {
-    if (isInvoiceMode) return;
+    if (!isInvoiceMode) return;
 
     const qty = transaction.quantity || 0;
     const unit = transaction.unitValue || 0;
@@ -134,172 +184,322 @@ const EntryForm: React.FC<EntryFormProps> = ({
   if (!isOpen) return null;
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    field: keyof Transaction,
+    value: string | number | boolean | IrCategory | ReceiptStatus
   ) => {
-    const { name, value } = e.target;
+    let updatedValue: any = value;
 
-    if (name === 'receiptStatus') {
+    if (
+      field === 'amount' ||
+      field === 'quantity' ||
+      field === 'unitValue'
+    ) {
+      const numericValue = parseFloat(value as string);
+      updatedValue = isNaN(numericValue) ? 0 : numericValue;
+    }
+
+    if (field === 'irCategory') {
+      const irCategoryValue = value as IrCategory;
+      let irRelevant = false;
+
+      switch (irCategoryValue) {
+        case 'SAUDE':
+        case 'EDUCACAO':
+        case 'PREVIDENCIA':
+        case 'DEPENDENTES':
+        case 'OUTROS':
+          irRelevant = true;
+          break;
+        default:
+          irRelevant = false;
+      }
+
       setTransaction((prev) => ({
         ...prev,
-        receiptStatus: value as ReceiptStatus,
+        irCategory: irCategoryValue,
+        irRelevant,
       }));
       return;
     }
 
-    if (name === 'irCategory') {
+    if (field === 'receiptStatus') {
+      const receiptStatusValue = value as ReceiptStatus;
       setTransaction((prev) => ({
         ...prev,
-        irCategory: value as IrCategory,
+        receiptStatus: receiptStatusValue,
       }));
       return;
     }
 
-    if (name === 'accountNumber') {
-      const num = parseInt(value, 10);
-      const acc = accounts.find((a) => a.number === num);
+    if (field === 'type') {
+      const typeValue = value as TransactionType;
       setTransaction((prev) => ({
         ...prev,
-        accountNumber: num,
-        accountName: acc?.name || '',
+        type: typeValue,
       }));
       return;
     }
 
-    const numeric = ['amount', 'quantity', 'unitValue'].includes(name)
-      ? parseFloat(value)
-      : value;
+    if (field === 'date') {
+      const dateValue = value as string;
+      const dateObj = new Date(dateValue);
+      setTransaction((prev) => ({
+        ...prev,
+        date: dateValue,
+        year: dateObj.getFullYear(),
+        month: dateObj.getMonth() + 1,
+      }));
+      return;
+    }
 
-    setTransaction((prev) => ({ ...prev, [name]: numeric }));
+    if (field === 'accountNumber') {
+      const account = accounts.find(
+        (acc) => acc.number === Number(value)
+      );
+      setTransaction((prev) => ({
+        ...prev,
+        accountNumber: Number(value),
+        accountName: account?.name || '',
+      }));
+      return;
+    }
+
+    setTransaction((prev) => ({
+      ...prev,
+      [field]: updatedValue,
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (isInvoiceMode) {
+      const validItems = items.filter((item) => item.description.trim());
+
+      if (validItems.length === 0) {
+        alert('Adicione pelo menos um item na nota fiscal');
+        return;
+      }
+
+      const totalAmount = validItems.reduce(
+        (sum, item) => sum + item.amount,
+        0
+      );
+
+      const transactionDate = new Date(transaction.date);
+
+      const payload: SavePayload = {
+        transaction: {
+          ...transaction,
+          amount: totalAmount,
+          year: transactionDate.getFullYear(),
+          month: transactionDate.getMonth() + 1,
+          updatedAt: new Date().toISOString(),
+          items: validItems.map((item) => ({
+            id: item.id,
+            description: item.description,
+            quantity: item.quantity,
+            unitValue: item.unitValue,
+            amount: item.amount,
+            accountNumber: Number(item.accountNumber),
+            accountName: item.accountName,
+          })),
+        },
+      };
+
+      onSave(payload);
+      onClose();
+      resetForm();
+      return;
+    }
+
+    if (!transaction.accountNumber) {
+      alert('Selecione uma conta');
+      return;
+    }
+
+    if (!transaction.description.trim()) {
+      alert('Informe uma descrição');
+      return;
+    }
+
+    if (transaction.amount === 0) {
+      alert('O valor não pode ser zero');
+      return;
+    }
+
+    const transactionDate = new Date(transaction.date);
+
+    const payload: SavePayload = {
+      transaction: {
+        ...transaction,
+        year: transactionDate.getFullYear(),
+        month: transactionDate.getMonth() + 1,
+        updatedAt: new Date().toISOString(),
+        isInstallment: isInstallmentMode,
+        installmentNumber: isInstallmentMode
+          ? transaction.installmentNumber
+          : undefined,
+        totalInstallments: isInstallmentMode
+          ? installmentsCount
+          : undefined,
+      },
+      installmentsCount: isInstallmentMode ? installmentsCount : undefined,
+      firstInstallmentDate: isInstallmentMode ? firstInstallmentDate : undefined,
+      updateScope: isEditingInstallment ? updateScope : undefined,
+    };
+
+    onSave(payload);
+    onClose();
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setTransaction({
+      id: '',
+      description: '',
+      type: 'expense',
+      amount: 0,
+      date: new Date().toISOString().split('T')[0],
+      accountNumber: '',
+      accountName: '',
+      category: '',
+      subcategory: '',
+      payee: '',
+      notes: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      quantity: 1,
+      unitValue: 0,
+      year: new Date().getFullYear(),
+      month: new Date().getMonth() + 1,
+      isInstallment: false,
+      installmentNumber: undefined,
+      totalInstallments: undefined,
+      seriesId: undefined,
+      irRelevant: false,
+      irCategory: 'NAO_DEDUTIVEL',
+      receiptStatus: 'NAO_INFORMADO',
+      irNotes: '',
+      irReceiptNumber: '',
+      irServiceType: '',
+      irProviderType: 'PESSOA_FISICA',
+      irProviderId: '',
+      irProviderName: '',
+    });
+    setInstallmentsCount(1);
+    setFirstInstallmentDate(new Date().toISOString().split('T')[0]);
+    setUpdateScope('single');
+    setIsInstallmentMode(false);
+    setIsInvoiceMode(false);
+    setItems([createEmptyItem()]);
+  };
+
+  const handleInvoiceModeChange = (checked: boolean) => {
+    if (checked) {
+      setIsInvoiceMode(true);
+      setIsInstallmentMode(false);
+      setItems([createEmptyItem()]);
+      setTransaction((prev) => ({
+        ...prev,
+        quantity: 1,
+        unitValue: prev.amount,
+      }));
+    } else {
+      setIsInvoiceMode(false);
+      setItems([createEmptyItem()]);
+      setTransaction((prev) => ({
+        ...prev,
+        items: [],
+      }));
+    }
+  };
+
+  const handleAddItem = () => {
+    setItems((prev) => [...prev, createEmptyItem()]);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleItemChange = (
     id: string,
     field: keyof InvoiceItem,
-    value: string
+    value: string | number
   ) => {
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
 
-        const updated = { ...item };
+        const updatedItem = { ...item };
 
-        switch (field) {
-          case 'accountNumber': {
-            const num = parseInt(value, 10);
-            const acc = accounts.find((a) => a.number === num);
-            updated.accountNumber = num;
-            updated.accountName = acc?.name || '';
-            break;
-          }
-          case 'quantity':
-            updated.quantity = parseFloat(value) || 0;
-            break;
-          case 'unitValue':
-            updated.unitValue = parseFloat(value) || 0;
-            break;
-          case 'amount':
-            updated.amount = parseFloat(value) || 0;
-            break;
-          case 'description':
-            updated.description = value;
-            break;
+        if (field === 'quantity' || field === 'unitValue' || field === 'amount') {
+          const numericValue = parseFloat(value as string);
+          (updatedItem as any)[field] = isNaN(numericValue) ? 0 : numericValue;
+        } else {
+          (updatedItem as any)[field] = value;
         }
 
         if (field === 'quantity' || field === 'unitValue') {
-          updated.amount = updated.quantity * updated.unitValue;
+          updatedItem.amount = updatedItem.quantity * updatedItem.unitValue;
         }
 
-        return updated;
+        if (field === 'accountNumber') {
+          const account = accounts.find(
+            (acc) => acc.number === Number(value)
+          );
+          updatedItem.accountName = account?.name || '';
+        }
+
+        return updatedItem;
       })
     );
   };
 
-  const handleAddItem = () => setItems((prev) => [...prev, createEmptyItem()]);
+  const totalItemsAmount = items.reduce(
+    (sum, item) => sum + item.amount,
+    0
+  );
 
-  const handleRemoveItem = (id: string) => {
-    setItems((prev) => {
-      const f = prev.filter((x) => x.id !== id);
-      return f.length === 0 ? [createEmptyItem()] : f;
-    });
-  };
+  const canUseInvoiceMode =
+    transaction.type === 'expense' && !isInstallmentMode;
 
-  const invoiceTotal = items.reduce((s, it) => s + it.amount, 0);
+  const IR_CATEGORIES: { value: IrCategory; label: string }[] = [
+    { value: 'NAO_DEDUTIVEL', label: 'Não dedutível / Geral' },
+    { value: 'SAUDE', label: 'Saúde' },
+    { value: 'EDUCACAO', label: 'Educação' },
+    { value: 'PREVIDENCIA', label: 'Previdência' },
+    { value: 'DEPENDENTES', label: 'Dependentes' },
+    { value: 'OUTROS', label: 'Outros gastos dedutíveis' },
+  ];
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const RECEIPT_STATUS_OPTIONS: { value: ReceiptStatus; label: string }[] = [
+    { value: 'TENHO_NOTA', label: 'Tenho a nota / comprovante' },
+    { value: 'PERDI_NOTA', label: 'Tinha, mas perdi' },
+    { value: 'NAO_EXIGIDO', label: 'Não é exigido (isento)' },
+    { value: 'NAO_INFORMADO', label: 'Não informado' },
+  ];
 
-    if (isInvoiceMode && !isEditingInstallment) {
-      const validItems = items.filter(
-        (i) => i.description.trim() !== '' || i.amount > 0
-      );
+  function generateId(): string {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  }
 
-      if (validItems.length === 0) {
-        alert('Adicione pelo menos um item na nota.');
-        return;
-      }
-
-      const invoiceId = generateId();
-      const totalParc = Math.max(1, installmentsCount);
-      const baseDate = new Date(firstInstallmentDate + 'T00:00:00');
-
-      validItems.forEach((item) => {
-        const seriesId = generateId();
-
-        for (let i = 0; i < totalParc; i++) {
-          const d = new Date(baseDate);
-          d.setMonth(d.getMonth() + i);
-
-          const parcela: Transaction = {
-            ...transaction,
-            id: generateId(),
-            date: d.toISOString().split('T')[0],
-            accountNumber: item.accountNumber,
-            accountName: item.accountName,
-            description:
-              totalParc > 1
-                ? `${item.description} (${i + 1}/${totalParc})`
-                : item.description,
-            quantity: item.quantity,
-            unitValue: item.unitValue,
-            amount: item.amount,
-            invoiceId,
-            seriesId: totalParc > 1 ? seriesId : undefined,
-          };
-
-          onSave({
-            transaction: parcela,
-            installmentsCount: 1,
-          });
-        }
-      });
-
-      onClose();
-      return;
-    }
-
-    onSave({
-      transaction: {
-        ...transaction,
-        id: transactionToEdit?.id || generateId(),
-      },
-      updateScope: isEditingInstallment ? updateScope : undefined,
-      installmentsCount,
-      firstInstallmentDate,
-    });
-
-    onClose();
-  };
-
-  const getBaseDescription = (d: string) =>
-    d.replace(/\s\(\d+\/\d+\)$/, '');
-
-  const canUseInvoiceMode = !isEditingInstallment;
+  function createEmptyItem(): InvoiceItem {
+    return {
+      id: generateId(),
+      description: '',
+      quantity: 1,
+      unitValue: 0,
+      amount: 0,
+      accountNumber: '',
+      accountName: '',
+    };
+  }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-6 my-8">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start sm:items-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl p-4 sm:p-6 my-4 sm:my-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">
             {transactionToEdit ? 'Editar' : 'Adicionar'} Lançamento
@@ -315,111 +515,323 @@ const EntryForm: React.FC<EntryFormProps> = ({
               disabled={!canUseInvoiceMode}
               className="mr-2"
             />
-            Modo nota fiscal
+            Modo nota fiscal (vários itens)
           </label>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* dados comuns */}
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Tipo
+              </label>
+              <select
+                value={transaction.type}
+                onChange={(e) =>
+                  handleChange('type', e.target.value as TransactionType)
+                }
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="income">Receita</option>
+                <option value="expense">Despesa</option>
+                <option value="transfer">Transferência</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Data
               </label>
               <input
                 type="date"
-                name="date"
                 value={transaction.date}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                onChange={(e) => handleChange('date', e.target.value)}
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Conta
+            </label>
+            <select
+              value={transaction.accountNumber}
+              onChange={(e) =>
+                handleChange('accountNumber', Number(e.target.value))
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            >
+              <option value="">Selecione uma conta</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.number}>
+                  {account.number} - {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Modo Nota Fiscal */}
+          <div className="border border-gray-300 dark:border-gray-600 rounded-md p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                IMPOSTO DE RENDA
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Comprovante / Nota fiscal
+                </p>
+                <div className="space-y-2">
+                  {RECEIPT_STATUS_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex items-center text-xs sm:text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      <input
+                        type="radio"
+                        name="receiptStatus"
+                        value={option.value}
+                        checked={transaction.receiptStatus === option.value}
+                        onChange={(e) =>
+                          handleChange(
+                            'receiptStatus',
+                            e.target.value as ReceiptStatus
+                          )
+                        }
+                        className="form-radio text-indigo-600 mr-2"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Categoria para IR
+                </label>
+                <select
+                  value={transaction.irCategory}
+                  onChange={(e) =>
+                    handleChange('irCategory', e.target.value as IrCategory)
+                  }
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                >
+                  {IR_CATEGORIES.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {transaction.irRelevant && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Dados do prestador (para recibo/nota)
+                    </label>
+                    <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <select
+                          value={transaction.irProviderType}
+                          onChange={(e) =>
+                            handleChange(
+                              'irProviderType',
+                              e.target.value as 'PESSOA_FISICA' | 'PESSOA_JURIDICA'
+                            )
+                          }
+                          className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                        >
+                          <option value="PESSOA_FISICA">Pessoa física (CPF)</option>
+                          <option value="PESSOA_JURIDICA">Pessoa jurídica (CNPJ)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder={
+                            transaction.irProviderType === 'PESSOA_FISICA'
+                              ? 'CPF do prestador'
+                              : 'CNPJ do prestador'
+                          }
+                          value={transaction.irProviderId || ''}
+                          onChange={(e) =>
+                            handleChange('irProviderId', e.target.value)
+                          }
+                          className="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Nome/Razão social do prestador"
+                      value={transaction.irProviderName || ''}
+                      onChange={(e) =>
+                        handleChange('irProviderName', e.target.value)
+                      }
+                      className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Observações para IR (opcional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Ex.: nome do prestador, número da nota, procedimento, dependente relacionado, etc."
+                      value={transaction.irNotes || ''}
+                      onChange={(e) => handleChange('irNotes', e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Descrição
+            </label>
+            <input
+              type="text"
+              value={transaction.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Quantidade
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={transaction.quantity ?? 1}
+                onChange={(e) =>
+                  handleChange('quantity', Number(e.target.value))
+                }
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                Tipo
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Vlr. Unit.
               </label>
-              <select
-                name="type"
-                value={transaction.type}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                <option value={TransactionType.SAIDA}>Saída</option>
-                <option value={TransactionType.ENTRADA}>Entrada</option>
-              </select>
+              <input
+                type="number"
+                step="0.01"
+                name="unitValue"
+                value={transaction.unitValue ?? 0}
+                onChange={(e) =>
+                  handleChange('unitValue', Number(e.target.value))
+                }
+                disabled={isInvoiceMode}
+                className={`mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${
+                  isInvoiceMode ? 'bg-gray-100 dark:bg-gray-600 cursor-not-allowed' : ''
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Total
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                name="amount"
+                value={transaction.amount}
+                onChange={(e) => handleChange('amount', Number(e.target.value))}
+                disabled={isInvoiceMode}
+                className={`mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${
+                  isInvoiceMode ? 'bg-gray-100 dark:bg-gray-600 cursor-not-allowed' : ''
+                }`}
+              />
             </div>
           </div>
 
-          {/* nota fiscal */}
           {isInvoiceMode && (
-            <>
-              <p className="font-semibold text-gray-700 dark:text-gray-200 text-sm pt-2">
-                Itens da Nota Fiscal
-              </p>
+            <div className="border border-gray-300 dark:border-gray-600 rounded-md p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                  Itens da Nota Fiscal
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="px-3 py-1 bg-indigo-600 text-white rounded-md text-xs sm:text-sm hover:bg-indigo-700"
+                >
+                  + Adicionar Item
+                </button>
+              </div>
 
-              <div className="space-y-4 max-h-80 overflow-y-auto">
-                {items.map((it) => (
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                {items.map((item, index) => (
                   <div
-                    key={it.id}
-                    className="p-3 rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 space-y-2"
+                    key={item.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-md p-3 space-y-2"
                   >
-                    <div className="flex justify-between">
-                      <span className="text-xs text-gray-600 dark:text-gray-300 font-semibold">
-                        Item
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Item {index + 1}
                       </span>
-
                       {items.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveItem(it.id)}
-                          className="text-xs text-red-500"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-xs text-red-500 hover:text-red-600"
                         >
-                          remover
+                          Remover
                         </button>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-700 dark:text-gray-300">
-                          Conta
-                        </label>
-                        <select
-                          value={it.accountNumber}
-                          onChange={(e) =>
-                            handleItemChange(
-                              it.id,
-                              'accountNumber',
-                              e.target.value
-                            )
-                          }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        >
-                          {accounts.map((a) => (
-                            <option key={a.id} value={a.number}>
-                              {a.number} - {a.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs text-gray-700 dark:text-gray-300">
                           Descrição
                         </label>
                         <input
                           type="text"
-                          value={it.description}
+                          value={item.description}
+                          onChange={(e) =>
+                            handleItemChange(item.id, 'description', e.target.value)
+                          }
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-gray-700 dark:text-gray-300">
+                          Conta
+                        </label>
+                        <select
+                          value={item.accountNumber}
                           onChange={(e) =>
                             handleItemChange(
-                              it.id,
-                              'description',
+                              item.id,
+                              'accountNumber',
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                        />
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
+                        >
+                          <option value="">Selecione uma conta</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.number}>
+                              {account.number} - {account.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -430,11 +842,16 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
-                          value={it.quantity}
+                          min="1"
+                          value={item.quantity}
                           onChange={(e) =>
-                            handleItemChange(it.id, 'quantity', e.target.value)
+                            handleItemChange(
+                              item.id,
+                              'quantity',
+                              Number(e.target.value)
+                            )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
 
@@ -444,15 +861,16 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
-                          value={it.unitValue}
+                          step="0.01"
+                          value={item.unitValue}
                           onChange={(e) =>
                             handleItemChange(
-                              it.id,
+                              item.id,
                               'unitValue',
-                              e.target.value
+                              Number(e.target.value)
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
 
@@ -462,11 +880,16 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
-                          value={it.amount}
+                          step="0.01"
+                          value={item.amount}
                           onChange={(e) =>
-                            handleItemChange(it.id, 'amount', e.target.value)
+                            handleItemChange(
+                              item.id,
+                              'amount',
+                              Number(e.target.value)
+                            )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
                     </div>
@@ -474,297 +897,118 @@ const EntryForm: React.FC<EntryFormProps> = ({
                 ))}
               </div>
 
-              <div className="flex justify-between items-center">
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  className="px-3 py-1 bg-indigo-600 text-white rounded-md text-xs"
-                >
-                  + adicionar item
-                </button>
-
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  Total NF: R$ {invoiceTotal.toFixed(2)}
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Total dos itens
+                </span>
+                <span className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+                  R$ {totalItemsAmount.toFixed(2)}
                 </span>
               </div>
-            </>
+            </div>
           )}
 
-          {/* modo simples */}
-          {!isInvoiceMode && (
-            <>
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                Conta
-              </label>
-              <select
-                name="accountNumber"
-                value={transaction.accountNumber}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.number}>
-                    {a.number} - {a.name}
-                  </option>
-                ))}
-              </select>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">
-                    Qtde
-                  </label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    value={transaction.quantity}
-                    onChange={handleChange}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">
-                    Vlr. Unit.
-                  </label>
-                  <input
-                    type="number"
-                    name="unitValue"
-                    value={transaction.unitValue}
-                    onChange={handleChange}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300">
-                    Total
-                  </label>
-                  <input
-                    type="number"
-                    name="amount"
-                    value={transaction.amount}
-                    onChange={handleChange}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                Histórico
-              </label>
-              <input
-                type="text"
-                name="description"
-                value={getBaseDescription(transaction.description)}
-                onChange={(e) => {
-                  const base = getBaseDescription(transaction.description);
-                  const newVal = e.target.value;
-                  const suffix = transaction.description.slice(base.length);
-                  setTransaction((prev) => ({
-                    ...prev,
-                    description: newVal + suffix,
-                  }));
-                }}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              />
-            </>
-          )}
-
-          {/* fornecedor/pagamento */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                Fornecedor / Comprador
-              </label>
-              <input
-                type="text"
-                name="payee"
-                value={transaction.payee}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-700 dark:text-gray-300">
-                Forma de Pagamento
-              </label>
-              <select
-                name="paymentMethod"
-                value={transaction.paymentMethod}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              >
-                <option value="pix">Pix</option>
-                <option value="credit_card">Cartão de Crédito</option>
-                <option value="debit_card">Cartão de Débito</option>
-                <option value="cash">Dinheiro</option>
-                <option value="transfer">Transferência</option>
-                <option value="other">Outro</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Histórico / Observações
+            </label>
+            <textarea
+              value={transaction.notes}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              rows={3}
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
           </div>
 
-          {/* imposto de renda */}
-          <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
-            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase">
-              Imposto de Renda
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={isInstallmentMode}
+                onChange={(e) => {
+                  setIsInstallmentMode(e.target.checked);
+                  if (e.target.checked) {
+                    setIsInvoiceMode(false);
+                  }
+                }}
+                disabled={isInvoiceMode}
+                className="form-checkbox h-4 w-4 text-indigo-600"
+              />
+              <label className="text-sm text-gray-700 dark:text-gray-300">
+                Lançamento parcelado
+              </label>
+            </div>
 
+            {isEditingInstallment && (
+              <div className="flex items-center space-x-4">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Atualizar:
+                </span>
+                <label className="flex items-center text-xs text-gray-700 dark:text-gray-300">
+                  <input
+                    type="radio"
+                    name="updateScope"
+                    value="single"
+                    checked={updateScope === 'single'}
+                    onChange={() => setUpdateScope('single')}
+                    className="form-radio text-indigo-600"
+                  />
+                  <span className="ml-2">Somente esta parcela</span>
+                </label>
+                <label className="flex items-center text-xs text-gray-700 dark:text-gray-300">
+                  <input
+                    type="radio"
+                    name="updateScope"
+                    value="future"
+                    checked={updateScope === 'future'}
+                    onChange={() => setUpdateScope('future')}
+                    className="form-radio text-indigo-600"
+                  />
+                  <span className="ml-2">Esta e as futuras</span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {isInstallmentMode && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-gray-700 dark:text-gray-300 mb-1">
-                  Comprovante / Nota fiscal
-                </label>
-
-                <div className="mt-1 space-y-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.HAS_BUT_NOT_ATTACHED}
-                      checked={
-                        transaction.receiptStatus ===
-                        ReceiptStatus.HAS_BUT_NOT_ATTACHED
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Tenho a nota / comprovante</span>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.LOST}
-                      checked={transaction.receiptStatus === ReceiptStatus.LOST}
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Tinha, mas perdi</span>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.NOT_REQUIRED}
-                      checked={
-                        transaction.receiptStatus ===
-                        ReceiptStatus.NOT_REQUIRED
-                      }
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Não é exigido (isento)</span>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="receiptStatus"
-                      value={ReceiptStatus.NONE}
-                      checked={transaction.receiptStatus === ReceiptStatus.NONE}
-                      onChange={handleChange}
-                      className="form-radio text-indigo-600"
-                    />
-                    <span className="ml-2">Não informado</span>
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-700 dark:text-gray-300 mb-1">
-                  Categoria para IR
-                </label>
-                <select
-                  name="irCategory"
-                  value={transaction.irCategory}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                >
-                  <option value={IrCategory.NAO_DEDUTIVEL}>
-                    Não dedutível / Geral
-                  </option>
-                  <option value={IrCategory.SAUDE}>Saúde</option>
-                  <option value={IrCategory.EDUCACAO}>Educação</option>
-                  <option value={IrCategory.LIVRO_CAIXA}>Livro-caixa</option>
-                  <option value={IrCategory.CARNE_LEAO}>Carnê-Leão</option>
-                  <option value={IrCategory.BENS_DIREITOS}>
-                    Bens e direitos
-                  </option>
-                  <option value={IrCategory.DIVIDAS_ONUS}>
-                    Dívidas e ônus
-                  </option>
-                  <option value={IrCategory.GANHO_CAPITAL}>
-                    Ganho de capital
-                  </option>
-                  <option value={IrCategory.ATIVIDADE_RURAL}>Atividade Rural</option>
-                  <option value={IrCategory.OUTROS}>Outros</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-700 dark:text-gray-300">
-                Observações para IR (opcional)
-              </label>
-              <textarea
-                name="irNotes"
-                value={transaction.irNotes ?? ''}
-                onChange={handleChange}
-                rows={2}
-                className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                placeholder="Ex.: nome do prestador, número da nota, vínculo com dependente..."
-              />
-            </div>
-          </div>
-
-          {/* parcelas */}
-          <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
-            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase">
-              Parcelamento
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Número de parcelas
                 </label>
                 <input
                   type="number"
+                  min="1"
                   value={installmentsCount}
                   onChange={(e) =>
-                    setInstallmentsCount(
-                      Math.max(1, parseInt(e.target.value || '1', 10))
-                    )
+                    setInstallmentsCount(Number(e.target.value))
                   }
-                  className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300">
-                  Data da 1ª parcela
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Data da primeira parcela
                 </label>
                 <input
                   type="date"
                   value={firstInstallmentDate}
                   onChange={(e) => setFirstInstallmentDate(e.target.value)}
-                  className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
             </div>
-          </div>
+          )}
 
-          {/* botões */}
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="flex justify-end space-x-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700"
+              onClick={() => {
+                resetForm();
+                onClose();
+              }}
+              className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700"
             >
               Cancelar
             </button>
