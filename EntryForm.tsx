@@ -40,6 +40,28 @@ const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
+// CORREÇÃO: Função para criar data sem problemas de timezone
+// Recebe string YYYY-MM-DD e retorna Date no horário local
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de DST
+};
+
+// CORREÇÃO: Função para formatar data como YYYY-MM-DD sem timezone issues
+const formatDateString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Função para adicionar meses a uma data
+const addMonths = (date: Date, months: number): Date => {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+};
+
 const EntryForm: React.FC<EntryFormProps> = ({
   isOpen,
   onClose,
@@ -48,8 +70,12 @@ const EntryForm: React.FC<EntryFormProps> = ({
   accounts,
   transactions,
 }) => {
+  const getTodayString = (): string => {
+    return formatDateString(new Date());
+  };
+
   const getInitialState = (): Omit<Transaction, 'id'> => ({
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayString(),
     type: TransactionType.SAIDA,
     accountNumber: accounts.length > 0 ? accounts[0].number : 0,
     accountName: accounts.length > 0 ? accounts[0].name : '',
@@ -63,10 +89,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
     receiptStatus: ReceiptStatus.NONE,
     irCategory: IrCategory.NAO_DEDUTIVEL,
     irNotes: '',
-    year: new Date().getFullYear(),
-    month: new Date().getMonth() + 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   });
 
   const createEmptyItem = (): InvoiceItem => ({
@@ -81,9 +103,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
   const [transaction, setTransaction] = useState(getInitialState());
   const [installmentsCount, setInstallmentsCount] = useState(1);
-  const [firstInstallmentDate, setFirstInstallmentDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [firstInstallmentDate, setFirstInstallmentDate] = useState(getTodayString());
   const [updateScope, setUpdateScope] = useState<'single' | 'future'>('single');
 
   const [isInvoiceMode, setIsInvoiceMode] = useState(false);
@@ -108,7 +128,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
         setInstallmentsCount(seriesTransactions.length || 1);
 
         const sorted = [...seriesTransactions].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          (a, b) => a.date.localeCompare(b.date)
         );
         const first = sorted[0] ?? transactionToEdit;
         setFirstInstallmentDate(first.date);
@@ -140,9 +160,10 @@ const EntryForm: React.FC<EntryFormProps> = ({
         setItems([createEmptyItem()]);
       }
     } else {
-      setTransaction(getInitialState());
+      const initial = getInitialState();
+      setTransaction(initial);
       setInstallmentsCount(1);
-      setFirstInstallmentDate(new Date().toISOString().split('T')[0]);
+      setFirstInstallmentDate(initial.date);
       setUpdateScope('single');
       setIsInvoiceMode(false);
       setItems([createEmptyItem()]);
@@ -282,9 +303,10 @@ const EntryForm: React.FC<EntryFormProps> = ({
           : transaction.date;
 
       const safeBaseDateString =
-        baseDateString || new Date().toISOString().split('T')[0];
+        baseDateString || getTodayString();
 
-      const baseDate = new Date(safeBaseDateString + 'T00:00:00');
+      // CORREÇÃO: Usar parseLocalDate para evitar problemas de timezone
+      const baseDate = parseLocalDate(safeBaseDateString);
 
       if (Number.isNaN(baseDate.getTime())) {
         alert(
@@ -297,8 +319,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
         const totalParc = Math.max(1, installmentsCount);
         const seriesId = totalParc > 1 ? generateId() : undefined;
 
-        const baseDateItem = new Date(baseDate);
-
         const rawAmount =
           typeof item.amount === 'number' && !isNaN(item.amount)
             ? item.amount
@@ -310,8 +330,8 @@ const EntryForm: React.FC<EntryFormProps> = ({
         let remainder = totalCents - basePerInstallment * totalParc;
 
         for (let i = 0; i < totalParc; i++) {
-          const d = new Date(baseDateItem);
-          d.setMonth(baseDateItem.getMonth() + i);
+          // CORREÇÃO: Usar addMonths para adicionar meses corretamente
+          const installmentDate = addMonths(baseDate, i);
 
           let cents = basePerInstallment;
           if (i === totalParc - 1) {
@@ -322,7 +342,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
           const parcelaBase: Transaction = {
             ...transaction,
             id: generateId(),
-            date: d.toISOString().split('T')[0],
+            date: formatDateString(installmentDate), // CORREÇÃO: Usar formatDateString
             accountNumber: item.accountNumber,
             accountName: item.accountName,
             description:
@@ -332,7 +352,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
             quantity: item.quantity,
             unitValue: item.unitValue,
             amount: parcelaAmount,
-            invoiceId,
+            invoiceId, // Marca como parte de uma nota fiscal
           };
 
           // Só adiciona seriesId quando de fato existir (parcelado > 1)
@@ -356,11 +376,16 @@ const EntryForm: React.FC<EntryFormProps> = ({
     // =========================
     // MODO NORMAL (sem nota fiscal)
     // =========================
+    
+    // CORREÇÃO: Garantir que a data está correta antes de salvar
+    const transactionToSave: Transaction = {
+      ...transaction,
+      id: transactionToEdit?.id || generateId(),
+      date: transaction.date, // A data já está no formato YYYY-MM-DD
+    };
+
     onSave({
-      transaction: {
-        ...transaction,
-        id: transactionToEdit?.id || generateId(),
-      },
+      transaction: transactionToSave,
       updateScope: isEditingInstallment ? updateScope : undefined,
       installmentsCount,
       firstInstallmentDate,
@@ -436,48 +461,70 @@ const EntryForm: React.FC<EntryFormProps> = ({
             </div>
           </div>
 
+          {/* Fornecedor/Comprador - movido para cima para contexto da NF */}
           <div>
             <label className="block text-sm text-gray-700 dark:text-gray-300">
-              Conta
-            </label>
-            <select
-              name="accountNumber"
-              value={transaction.accountNumber}
-              onChange={handleChange}
-              className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.number}>
-                  {account.number} - {account.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-700 dark:text-gray-300">
-              Histórico
+              Fornecedor/Comprador
             </label>
             <input
               type="text"
-              name="description"
-              value={transaction.description}
+              name="payee"
+              value={transaction.payee}
               onChange={handleChange}
+              placeholder="Nome do fornecedor ou comprador"
               className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
           </div>
+
+          {!isInvoiceMode && (
+            <>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300">
+                  Conta
+                </label>
+                <select
+                  name="accountNumber"
+                  value={transaction.accountNumber}
+                  onChange={handleChange}
+                  className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.number}>
+                      {account.number} - {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300">
+                  Histórico
+                </label>
+                <input
+                  type="text"
+                  name="description"
+                  value={transaction.description}
+                  onChange={handleChange}
+                  className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            </>
+          )}
 
           {/* NF vs lançamento simples */}
           {isInvoiceMode ? (
             <>
               {/* ITENS DA NOTA */}
-              <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
+              <div className="border-2 border-amber-400 dark:border-amber-600 rounded-md p-3 bg-amber-50 dark:bg-amber-900/20 space-y-3">
                 <div className="flex justify-between items-center mb-2">
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase">
-                    Itens da nota
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Itens da Nota Fiscal
                   </p>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Total dos itens:{' '}
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    Total:{' '}
                     <strong>
                       {totalItemsAmount.toLocaleString('pt-BR', {
                         style: 'currency',
@@ -487,11 +534,24 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   </span>
                 </div>
 
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <div
                     key={item.id}
                     className="border rounded-md p-2 mb-2 bg-white dark:bg-gray-800"
                   >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        Item {index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.id)}
+                        className="text-xs text-red-600 dark:text-red-400 hover:text-red-800"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                       <div>
                         <label className="block text-xs text-gray-700 dark:text-gray-300">
@@ -506,7 +566,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         >
                           {accounts.map((account) => (
                             <option
@@ -533,7 +593,8 @@ const EntryForm: React.FC<EntryFormProps> = ({
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          placeholder="Ex: Ração, Medicamento..."
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
                     </div>
@@ -545,6 +606,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
+                          step="any"
                           value={item.quantity}
                           onChange={(e) =>
                             handleItemChange(
@@ -553,7 +615,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
                       <div>
@@ -562,6 +624,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
+                          step="any"
                           value={item.unitValue}
                           onChange={(e) =>
                             handleItemChange(
@@ -570,7 +633,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm"
                         />
                       </div>
                       <div>
@@ -579,6 +642,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                         </label>
                         <input
                           type="number"
+                          step="any"
                           value={item.amount}
                           onChange={(e) =>
                             handleItemChange(
@@ -587,19 +651,9 @@ const EntryForm: React.FC<EntryFormProps> = ({
                               e.target.value
                             )
                           }
-                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm font-semibold"
                         />
                       </div>
-                    </div>
-
-                    <div className="flex justify-end mt-2">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="text-xs text-red-600 dark:text-red-400"
-                      >
-                        Remover item
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -607,9 +661,12 @@ const EntryForm: React.FC<EntryFormProps> = ({
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="text-xs text-indigo-600 dark:text-indigo-400"
+                  className="text-sm text-amber-700 dark:text-amber-400 hover:text-amber-900 flex items-center"
                 >
-                  + Adicionar item
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Adicionar item
                 </button>
               </div>
             </>
@@ -624,6 +681,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   <input
                     type="number"
                     name="quantity"
+                    step="any"
                     value={transaction.quantity ?? 1}
                     onChange={handleChange}
                     className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -636,6 +694,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   <input
                     type="number"
                     name="unitValue"
+                    step="any"
                     value={transaction.unitValue ?? 0}
                     onChange={handleChange}
                     className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -648,9 +707,10 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   <input
                     type="number"
                     name="amount"
+                    step="0.01"
                     value={transaction.amount}
                     onChange={handleChange}
-                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white font-semibold"
                   />
                 </div>
               </div>

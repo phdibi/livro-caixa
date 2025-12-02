@@ -1,4 +1,4 @@
-// === App.tsx SEM IA ===
+// === App.tsx CORRIGIDO ===
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Transaction,
@@ -46,6 +46,25 @@ const generateId = () => {
     return crypto.randomUUID();
   }
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
+
+// CORREÇÃO: Funções para manipulação de datas sem problemas de timezone
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
+const formatDateString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addMonths = (date: Date, months: number): Date => {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
 };
 
 const App: React.FC = () => {
@@ -183,14 +202,8 @@ const App: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
       const searchTermLower = filters.searchTerm.toLowerCase();
-      const transactionDate = new Date(t.date);
-      const startDate = filters.startDate
-        ? new Date(filters.startDate)
-        : null;
-      const endDate = filters.endDate ? new Date(filters.endDate) : null;
-
-      if (startDate) startDate.setHours(0, 0, 0, 0);
-      if (endDate) endDate.setHours(23, 59, 59, 999);
+      const startDate = filters.startDate ? filters.startDate : null;
+      const endDate = filters.endDate ? filters.endDate : null;
 
       const matchSearch = filters.searchTerm
         ? t.description.toLowerCase().includes(searchTermLower) ||
@@ -203,23 +216,24 @@ const App: React.FC = () => {
       const matchAccount = filters.accountId
         ? t.accountNumber === parseInt(filters.accountId)
         : true;
+      
+      // CORREÇÃO: Comparar datas como strings YYYY-MM-DD (evita timezone issues)
       const matchDate =
-        (!startDate || transactionDate >= startDate) &&
-        (!endDate || transactionDate <= endDate);
+        (!startDate || t.date >= startDate) &&
+        (!endDate || t.date <= endDate);
 
       return matchSearch && matchType && matchAccount && matchDate;
     });
   }, [transactions, filters]);
 
   const sortedTransactions = useMemo(() => {
-    const sorted = [...filteredTransactions].sort(
-      (a, b) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime()
+    const sorted = [...filteredTransactions].sort((a, b) =>
+      a.date.localeCompare(b.date)
     );
     return sortOrder === 'asc' ? sorted : sorted.reverse();
   }, [filteredTransactions, sortOrder]);
 
-    const { totalEntradas, totalSaidas, margem } = useMemo(() => {
+  const { totalEntradas, totalSaidas, margem } = useMemo(() => {
     let entradas = 0;
     let saidas = 0;
 
@@ -243,7 +257,7 @@ const App: React.FC = () => {
     };
   }, [filteredTransactions]);
 
-      const irpfResumo = useMemo(() => {
+  const irpfResumo = useMemo(() => {
     type CatKey = IrCategory | 'NAO_CLASSIFICADO';
 
     const porCategoria = new Map<
@@ -267,9 +281,12 @@ const App: React.FC = () => {
         porCategoria.set(key, atual);
       }
 
+      const isSaida =
+        t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+
       const precisaRecibo =
         isRelevante &&
-        t.type === TransactionType.SAIDA &&
+        isSaida &&
         t.receiptStatus !== ReceiptStatus.ATTACHED &&
         t.receiptStatus !== ReceiptStatus.NOT_REQUIRED;
 
@@ -285,7 +302,18 @@ const App: React.FC = () => {
     return { resumoArray, pendentesComprovante };
   }, [filteredTransactions]);
 
-
+  // Agrupar transações por invoiceId para exibição
+  const invoiceGroups = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+    filteredTransactions.forEach((t) => {
+      if (t.invoiceId) {
+        const existing = groups.get(t.invoiceId) || [];
+        existing.push(t);
+        groups.set(t.invoiceId, existing);
+      }
+    });
+    return groups;
+  }, [filteredTransactions]);
 
   const handleAddTransaction = () => {
     setTransactionToEdit(null);
@@ -337,11 +365,7 @@ const App: React.FC = () => {
             .filter(
               (t) => t.seriesId === seriesId && t.id !== id
             )
-            .sort(
-              (a, b) =>
-                new Date(a.date).getTime() -
-                new Date(b.date).getTime()
-            );
+            .sort((a, b) => a.date.localeCompare(b.date));
 
           const updatedTransactions: Transaction[] =
             remainingInstallments.map((t, index) => ({
@@ -414,20 +438,14 @@ const App: React.FC = () => {
 
           transactionsToDelete.push(...toDelete.map((t) => t.id));
 
-          let startDate;
+          let startDate: Date;
           if (originalSeriesId) {
             const seriesStart = transactions
               .filter((t) => t.seriesId === originalSeriesId)
-              .sort(
-                (a, b) =>
-                  new Date(a.date).getTime() -
-                  new Date(b.date).getTime()
-              )[0];
-            startDate = new Date(seriesStart.date + 'T00:00:00');
+              .sort((a, b) => a.date.localeCompare(b.date))[0];
+            startDate = parseLocalDate(seriesStart.date);
           } else {
-            startDate = new Date(
-              transactionToEdit.date + 'T00:00:00'
-            );
+            startDate = parseLocalDate(transactionToEdit.date);
           }
 
           const baseDescription =
@@ -439,15 +457,12 @@ const App: React.FC = () => {
           if (installmentsCount > 1) {
             const newSeriesId = originalSeriesId || generateId();
             for (let i = 0; i < installmentsCount; i++) {
-              const installmentDate = new Date(startDate);
-              installmentDate.setMonth(startDate.getMonth() + i);
+              const installmentDate = addMonths(startDate, i);
               transactionsToSave.push({
                 ...transaction,
                 id: generateId(),
                 seriesId: newSeriesId,
-                date: installmentDate
-                  .toISOString()
-                  .split('T')[0],
+                date: formatDateString(installmentDate),
                 description: `${baseDescription} (${
                   i + 1
                 }/${installmentsCount})`,
@@ -458,7 +473,7 @@ const App: React.FC = () => {
               ...transaction,
               id: transactionToEdit.id,
               seriesId: undefined,
-              date: startDate.toISOString().split('T')[0],
+              date: formatDateString(startDate),
               description: baseDescription,
             });
           }
@@ -466,11 +481,7 @@ const App: React.FC = () => {
           if (updateScope === 'future' && originalSeriesId) {
             const seriesTransactions = transactions
               .filter((t) => t.seriesId === originalSeriesId)
-              .sort(
-                (a, b) =>
-                  new Date(a.date).getTime() -
-                  new Date(b.date).getTime()
-              );
+              .sort((a, b) => a.date.localeCompare(b.date));
 
             const editedIndex = seriesTransactions.findIndex(
               (t) => t.id === transactionToEdit.id
@@ -483,18 +494,15 @@ const App: React.FC = () => {
                 ''
               );
 
+            const baseDate = parseLocalDate(transaction.date);
+
             for (
               let i = editedIndex;
               i < seriesTransactions.length;
               i++
             ) {
               const originalInstallment = seriesTransactions[i];
-              const newDate = new Date(
-                transaction.date + 'T00:00:00'
-              );
-              newDate.setMonth(
-                newDate.getMonth() + (i - editedIndex)
-              );
+              const newDate = addMonths(baseDate, i - editedIndex);
 
               const installmentNumberMatch =
                 originalInstallment.description.match(
@@ -509,9 +517,7 @@ const App: React.FC = () => {
                 ...transaction,
                 id: originalInstallment.id,
                 seriesId: originalSeriesId,
-                date: newDate
-                  .toISOString()
-                  .split('T')[0],
+                date: formatDateString(newDate),
                 description: `${baseDescription} (${
                   installmentNumber
                 }/${seriesTransactions.length})`,
@@ -526,23 +532,19 @@ const App: React.FC = () => {
         }
       } else {
         if (installmentsCount > 1) {
-          const startDate = new Date(
-            (firstInstallmentDate || transaction.date) +
-              'T00:00:00'
+          const startDate = parseLocalDate(
+            firstInstallmentDate || transaction.date
           );
           const seriesId = generateId();
 
           for (let i = 0; i < installmentsCount; i++) {
-            const installmentDate = new Date(startDate);
-            installmentDate.setMonth(startDate.getMonth() + i);
+            const installmentDate = addMonths(startDate, i);
 
             transactionsToSave.push({
               ...transaction,
               id: generateId(),
               seriesId: seriesId,
-              date: installmentDate
-                .toISOString()
-                .split('T')[0],
+              date: formatDateString(installmentDate),
               description: `${transaction.description} (${
                 i + 1
               }/${installmentsCount})`,
@@ -601,14 +603,13 @@ const App: React.FC = () => {
 
     const existingSignatures = new Set(
       transactions
-        .filter(
-          (t) =>
-            new Date(t.date).getFullYear() === year &&
-            new Date(t.date).getMonth() === month - 1
-        )
+        .filter((t) => {
+          const tDate = parseLocalDate(t.date);
+          return tDate.getFullYear() === year && tDate.getMonth() === month - 1;
+        })
         .map(
           (t) =>
-            `${new Date(t.date).getDate()}-${t.accountNumber}-${
+            `${parseLocalDate(t.date).getDate()}-${t.accountNumber}-${
               t.amount
             }-${t.description}`
         )
@@ -617,13 +618,13 @@ const App: React.FC = () => {
     const newTransactions: Transaction[] = [];
 
     recurringTransactions.forEach((rt) => {
-      const transactionDate = new Date(year, month - 1, rt.dayOfMonth);
+      const transactionDate = new Date(year, month - 1, rt.dayOfMonth, 12, 0, 0);
       if (transactionDate.getMonth() === month - 1) {
         const signature = `${rt.dayOfMonth}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
         if (!existingSignatures.has(signature)) {
           newTransactions.push({
             id: generateId(),
-            date: transactionDate.toISOString().split('T')[0],
+            date: formatDateString(transactionDate),
             type: rt.type,
             accountNumber: rt.accountNumber,
             accountName: rt.accountName,
@@ -689,6 +690,13 @@ const App: React.FC = () => {
       currency: 'BRL',
     });
   };
+
+  // Formatar data para exibição (DD/MM/YYYY)
+  const formatDisplayDate = (dateStr: string) => {
+    const date = parseLocalDate(dateStr);
+    return date.toLocaleDateString('pt-BR');
+  };
+
   const receiptStatusLabel = (status?: ReceiptStatus) => {
     switch (status) {
       case ReceiptStatus.HAS_BUT_NOT_ATTACHED:
@@ -744,6 +752,22 @@ const App: React.FC = () => {
       default:
         return 'Não classificado';
     }
+  };
+
+  // Verificar se uma transação é parte de uma nota fiscal
+  const isInvoiceItem = (t: Transaction): boolean => {
+    return !!t.invoiceId;
+  };
+
+  // Obter cor de fundo para linha da tabela baseado no invoiceId
+  const getInvoiceRowClasses = (t: Transaction): string => {
+    if (!t.invoiceId) return '';
+    
+    // Gerar cor consistente baseada no invoiceId
+    const invoiceItems = invoiceGroups.get(t.invoiceId);
+    if (!invoiceItems || invoiceItems.length <= 1) return '';
+    
+    return 'bg-amber-50 dark:bg-amber-900/20 border-l-4 border-l-amber-400 dark:border-l-amber-600';
   };
 
 
@@ -926,9 +950,16 @@ const App: React.FC = () => {
             {activeView === 'list' && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4">
                 <div className="flex justify-between items-center px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                  <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                    Histórico de Lançamentos
-                  </h2>
+                  <div className="flex items-center space-x-4">
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                      Histórico de Lançamentos
+                    </h2>
+                    {/* Legenda para itens de nota fiscal */}
+                    <div className="hidden sm:flex items-center text-xs text-gray-500 dark:text-gray-400">
+                      <span className="inline-block w-3 h-3 bg-amber-400 dark:bg-amber-600 rounded mr-1"></span>
+                      Nota Fiscal
+                    </div>
+                  </div>
                   <button
                     onClick={() =>
                       setSortOrder((prev) =>
@@ -977,12 +1008,25 @@ const App: React.FC = () => {
 
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                       {sortedTransactions.map((t) => (
-                                                <tr
+                        <tr
                           key={t.id}
-                          className="hover:bg-gray-50 dark:hover:bg-gray-900/40"
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-900/40 ${getInvoiceRowClasses(t)}`}
                         >
                           <td className="px-4 py-2 whitespace-nowrap text-gray-800 dark:text-gray-100">
-                            {new Date(t.date).toLocaleDateString('pt-BR')}
+                            <div className="flex items-center">
+                              {isInvoiceItem(t) && (
+                                <svg 
+                                  className="w-4 h-4 mr-1.5 text-amber-500 dark:text-amber-400" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  viewBox="0 0 24 24"
+                                  title="Item de Nota Fiscal"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              )}
+                              {formatDisplayDate(t.date)}
+                            </div>
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap">
                             <span
@@ -1044,7 +1088,7 @@ const App: React.FC = () => {
                       {sortedTransactions.length === 0 && (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={9}
                             className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
                           >
                             Nenhum lançamento encontrado com os filtros
@@ -1174,7 +1218,7 @@ const App: React.FC = () => {
                         {irpfResumo.pendentesComprovante.map((t) => (
                           <tr key={t.id}>
                             <td className="px-3 py-2 whitespace-nowrap">
-                              {new Date(t.date).toLocaleDateString('pt-BR')}
+                              {formatDisplayDate(t.date)}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               {t.accountNumber} - {t.accountName}
