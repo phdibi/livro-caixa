@@ -393,9 +393,8 @@ class SyncService {
 
     await batch.commit();
 
-    for (const id of ids) {
-      await cacheService.deleteTransaction(id);
-    }
+    // OTIMIZADO: Deletar do cache em paralelo em vez de sequencial
+    await Promise.all(ids.map((id) => cacheService.deleteTransaction(id)));
 
     await this.updateChangeMarker(userId);
   }

@@ -73,6 +73,7 @@ const formatReceiptStatusLabel = (status?: ReceiptStatus): string => {
   }
 };
 
+// CORRIGIDO: Removidos enums que não existem no types.ts
 const formatIrCategoryLabel = (cat?: IrCategory): string => {
   switch (cat) {
     case IrCategory.SAUDE:
@@ -83,15 +84,13 @@ const formatIrCategoryLabel = (cat?: IrCategory): string => {
       return 'Livro-caixa / atividade';
     case IrCategory.CARNE_LEAO:
       return 'Carnê-leão';
-    case IrCategory.BENS_DIREITOS:
+    case IrCategory.BEM_DIREITO:
       return 'Bens e direitos';
-    case IrCategory.DIVIDAS_ONUS:
-      return 'Dívidas e ônus';
-    case IrCategory.GANHO_CAPITAL:
-      return 'Ganho de capital';
+    case IrCategory.ALUGUEL:
+      return 'Aluguel';
     case IrCategory.ATIVIDADE_RURAL:
       return 'Atividade Rural';
-    case IrCategory.OUTROS:
+    case IrCategory.OUTRA:
       return 'Outros';
     case IrCategory.NAO_DEDUTIVEL:
     default:
@@ -132,10 +131,14 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
     const incomeMap = new Map<string, number>();
 
     transactions.forEach((t) => {
-      if (t.type === TransactionType.SAIDA) {
+      // CORRIGIDO: Comparação robusta para tipo
+      const isEntrada = t.type === TransactionType.ENTRADA || t.type === 'Entrada';
+      const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+
+      if (isSaida) {
         const current = expenseMap.get(t.accountName) || 0;
         expenseMap.set(t.accountName, current + t.amount);
-      } else {
+      } else if (isEntrada) {
         const current = incomeMap.get(t.accountName) || 0;
         incomeMap.set(t.accountName, current + t.amount);
       }
@@ -168,7 +171,8 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
     });
 
     const total = filtered.reduce((sum, t) => {
-      const signedValue = t.type === TransactionType.SAIDA ? -t.amount : t.amount;
+      const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+      const signedValue = isSaida ? -t.amount : t.amount;
       return sum + signedValue;
     }, 0);
 
@@ -203,12 +207,13 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
       );
 
       sortedTransactions.forEach((t) => {
+        const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
         transactionsSheet.addRow({
           date: t.date,
-          type: t.type === TransactionType.SAIDA ? 'Saída' : 'Entrada',
+          type: isSaida ? 'Saída' : 'Entrada',
           accountName: t.accountName,
           description: t.description,
-          amount: t.type === TransactionType.SAIDA ? -t.amount : t.amount,
+          amount: isSaida ? -t.amount : t.amount,
           payee: t.payee,
           receiptStatus: formatReceiptStatusLabel(t.receiptStatus),
           irCategory: formatIrCategoryLabel(t.irCategory),
@@ -249,12 +254,13 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
       let irRunningTotal = 0;
 
       irTransactions.forEach((t) => {
-        const signedValue = t.type === TransactionType.SAIDA ? -t.amount : t.amount;
+        const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+        const signedValue = isSaida ? -t.amount : t.amount;
         irRunningTotal += signedValue;
 
         irSheet.addRow({
           date: t.date,
-          type: t.type === TransactionType.SAIDA ? 'Saída' : 'Entrada',
+          type: isSaida ? 'Saída' : 'Entrada',
           accountName: t.accountName,
           description: t.description,
           amount: signedValue,

@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Transaction, Account, TransactionType } from './types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface CustomChartViewProps {
     transactions: Transaction[];
@@ -10,6 +9,15 @@ interface CustomChartViewProps {
 
 const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
+// Helper para comparação robusta de tipo (enum ou string literal)
+const isEntrada = (t: Transaction): boolean => {
+    return t.type === TransactionType.ENTRADA || t.type === 'Entrada';
+};
+
+const isSaida = (t: Transaction): boolean => {
+    return t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
 };
 
 const MultiSelectDropdown: React.FC<{
@@ -89,12 +97,16 @@ const CustomChartView: React.FC<CustomChartViewProps> = ({ transactions, account
                 const date = new Date(t.date + 'T00:00:00');
                 const month = date.getMonth();
                 const year = date.getFullYear();
-                const key = `${year}-${month}`;
+                const key = `${year}-${String(month).padStart(2, '0')}`;
                 if (!dataMap[key]) {
                     dataMap[key] = { name: `${monthNames[month]}/${year.toString().slice(-2)}`, Entrada: 0, Saida: 0 };
                 }
-                if (t.type === TransactionType.ENTRADA) dataMap[key].Entrada += t.amount;
-                else dataMap[key].Saida += t.amount;
+                // CORRIGIDO: Usando helpers robustos
+                if (isEntrada(t)) {
+                    dataMap[key].Entrada += t.amount;
+                } else if (isSaida(t)) {
+                    dataMap[key].Saida += t.amount;
+                }
             });
         } else { // groupBy === 'conta'
             filteredByAccount.forEach(t => {
@@ -102,12 +114,23 @@ const CustomChartView: React.FC<CustomChartViewProps> = ({ transactions, account
                 if (!dataMap[key]) {
                     dataMap[key] = { name: key, Entrada: 0, Saida: 0 };
                 }
-                if (t.type === TransactionType.ENTRADA) dataMap[key].Entrada += t.amount;
-                else dataMap[key].Saida += t.amount;
+                // CORRIGIDO: Usando helpers robustos
+                if (isEntrada(t)) {
+                    dataMap[key].Entrada += t.amount;
+                } else if (isSaida(t)) {
+                    dataMap[key].Saida += t.amount;
+                }
             });
         }
         
         let processedData = Object.values(dataMap);
+
+        // Ordenar por chave se agrupado por mês
+        if (groupBy === 'mes') {
+            processedData = Object.entries(dataMap)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([, value]) => value);
+        }
 
         if (metric === 'Entradas') {
             return processedData.map(d => ({ name: d.name, Valor: d.Entrada })).filter(d => d.Valor > 0);
