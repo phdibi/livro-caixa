@@ -1,14 +1,29 @@
-// cacheService.ts - Serviço de Cache com IndexedDB
+// cacheService.ts - Serviço de Cache com IndexedDB (com fila offline)
 import { Transaction, Account, RecurringTransaction } from './types';
 
 const DB_NAME = 'LivroCaixaDB';
-const DB_VERSION = 1;
+// IMPORTANTE: aumente a versão sempre que criar/alterar stores/indexes
+const DB_VERSION = 2;
 
-interface SyncMetadata {
+export interface SyncMetadata {
   id: string;
   collection: string;
   lastSync: number;
   userId: string;
+}
+
+export type PendingCollection = 'transactions' | 'recurring_transactions';
+
+export type PendingAction = 'set' | 'delete';
+
+export interface PendingOperation {
+  id: string;              // id interno da operação
+  userId: string;
+  collection: PendingCollection;
+  action: PendingAction;
+  docId: string;           // id do documento no Firestore (transaction.id / recurring.id)
+  data?: any;              // payload quando for "set"
+  timestamp: number;       // para executar na ordem
 }
 
 class CacheService {
@@ -57,6 +72,13 @@ class CacheService {
         if (!db.objectStoreNames.contains('sync_metadata')) {
           db.createObjectStore('sync_metadata', { keyPath: 'id' });
         }
+
+        // NOVO: Store para operações pendentes (modo offline)
+        if (!db.objectStoreNames.contains('pending_operations')) {
+          const pendingStore = db.createObjectStore('pending_operations', { keyPath: 'id' });
+          pendingStore.createIndex('userId', 'userId', { unique: false });
+          pendingStore.createIndex('userTime', ['userId', 'timestamp'], { unique: false });
+        }
       };
     });
   }
@@ -79,7 +101,6 @@ class CacheService {
       request.onsuccess = () => {
         let results = request.result as Transaction[];
         
-        // Filtrar por data se especificado
         if (startDate || endDate) {
           results = results.filter(t => {
             if (startDate && t.date < startDate) return false;
@@ -309,6 +330,64 @@ class CacheService {
     });
   }
 
+  // ============ PENDING OPERATIONS (OFFLINE QUEUE) ============
+
+  async addPendingOperation(operation: PendingOperation): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending_operations', 'readwrite');
+      const store = tx.objectStore('pending_operations');
+      store.put(operation);
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async getPendingOperations(userId: string): Promise<PendingOperation[]> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending_operations', 'readonly');
+      const store = tx.objectStore('pending_operations');
+      const index = store.index('userId');
+      const request = index.getAll(userId);
+
+      request.onsuccess = () => {
+        const ops = (request.result as PendingOperation[]).sort(
+          (a, b) => a.timestamp - b.timestamp
+        );
+        resolve(ops);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async removePendingOperation(id: string): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending_operations', 'readwrite');
+      const store = tx.objectStore('pending_operations');
+      store.delete(id);
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async clearPendingOperations(userId: string): Promise<void> {
+    const ops = await this.getPendingOperations(userId);
+    const db = await this.getDB();
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('pending_operations', 'readwrite');
+      const store = tx.objectStore('pending_operations');
+      ops.forEach(op => store.delete(op.id));
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
   // ============ UTILITY ============
 
   async clearAllUserData(userId: string): Promise<void> {
@@ -316,6 +395,7 @@ class CacheService {
     await this.clearAccounts(userId);
     await this.clearRecurringTransactions(userId);
     await this.clearAllSyncMetadata(userId);
+    await this.clearPendingOperations(userId);
   }
 
   async needsSync(userId: string, collection: string, maxAgeMinutes: number = 30): Promise<boolean> {
