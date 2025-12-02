@@ -33,18 +33,6 @@ const generateId = () => {
 };
 
 const App: React.FC = () => {
-
-    // === SNACKBAR ===
-    const [snackbarMessage, setSnackbarMessage] = useState("");
-    const [showSnackbar, setShowSnackbar] = useState(false);
-
-    const triggerSnackbar = (message: string) => {
-        setSnackbarMessage(message);
-        setShowSnackbar(true);
-        setTimeout(() => setShowSnackbar(false), 3000);
-    };
-    // === FIM SNACKBAR ===
-
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(false);
@@ -59,7 +47,7 @@ const App: React.FC = () => {
     const [activeView, setActiveView] = useState<'list' | 'dashboard' | 'irpf'>('dashboard');
     const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-
+    
     const [filters, setFilters] = useState({
         searchTerm: '',
         type: '',
@@ -72,13 +60,13 @@ const App: React.FC = () => {
 
     const reloadFromCache = useCallback(async () => {
         if (!user) return;
-
+        
         const [trans, acc, rec] = await Promise.all([
             cacheService.getTransactions(user.uid),
             cacheService.getAccounts(user.uid),
             cacheService.getRecurringTransactions(user.uid)
         ]);
-
+        
         setTransactions(trans);
         setAccounts(acc.sort((a, b) => a.number - b.number));
         setRecurringTransactions(rec);
@@ -93,16 +81,6 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, []);
 
-    // === ADICIONADO: snackbar ao sincronizar ===
-    useEffect(() => {
-        if (user) {
-            syncService.setSyncSuccessCallback(() => {
-                triggerSnackbar("Sincronizado com sucesso!");
-            });
-        }
-    }, [user]);
-    // === FIM ADIÇÃO ===
-
     useEffect(() => {
         if (!user) {
             setTransactions([]);
@@ -115,9 +93,9 @@ const App: React.FC = () => {
         const initializeData = async () => {
             setDataLoading(true);
             try {
-                const { transactions: trans, accounts: acc, recurringTransactions: rec } =
+                const { transactions: trans, accounts: acc, recurringTransactions: rec } = 
                     await syncService.initialize(user.uid, reloadFromCache);
-
+                
                 setTransactions(trans);
                 setAccounts(acc.sort((a, b) => a.number - b.number));
                 setRecurringTransactions(rec);
@@ -142,12 +120,12 @@ const App: React.FC = () => {
 
     const handleForceSync = async () => {
         if (!user || isSyncing) return;
-
+        
         setIsSyncing(true);
         try {
-            const { transactions: trans, accounts: acc, recurringTransactions: rec } =
+            const { transactions: trans, accounts: acc, recurringTransactions: rec } = 
                 await syncService.forceFullSync(user.uid);
-
+            
             setTransactions(trans);
             setAccounts(acc.sort((a, b) => a.number - b.number));
             setRecurringTransactions(rec);
@@ -178,9 +156,7 @@ const App: React.FC = () => {
 
             const matchType = filters.type ? t.type === filters.type : true;
             const matchAccount = filters.accountId ? t.accountNumber === parseInt(filters.accountId) : true;
-            const matchDate =
-                (!startDate || transactionDate >= startDate) &&
-                (!endDate || transactionDate <= endDate);
+            const matchDate = (!startDate || transactionDate >= startDate) && (!endDate || transactionDate <= endDate);
 
             return matchSearch && matchType && matchAccount && matchDate;
         });
@@ -216,28 +192,30 @@ const App: React.FC = () => {
             if (transactionToDelete.seriesId) {
                 const confirmMessage = `Este é um lançamento parcelado (${transactionToDelete.description}).\n\nClique em "OK" para excluir a série inteira.\nClique em "Cancelar" para excluir apenas esta parcela.`;
                 if (window.confirm(confirmMessage)) {
+                    // Delete entire series
                     const seriesTransactions = transactions.filter(t => t.seriesId === transactionToDelete.seriesId);
                     const idsToDelete = seriesTransactions.map(t => t.id);
-
+                    
                     await syncService.deleteTransactionsBatch(idsToDelete, user.uid);
                     setTransactions(prev => prev.filter(t => t.seriesId !== transactionToDelete.seriesId));
                 } else {
+                    // Delete only this one
                     const seriesId = transactionToDelete.seriesId;
                     const baseDescription = transactionToDelete.description.replace(/\s\(\d+\/\d+\)$/, '');
-
+                    
                     await syncService.deleteTransaction(id, user.uid);
 
                     const remainingInstallments = transactions
                         .filter(t => t.seriesId === seriesId && t.id !== id)
                         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
+                    
                     const updatedTransactions: Transaction[] = remainingInstallments.map((t, index) => ({
                         ...t,
                         description: `${baseDescription} (${index + 1}/${remainingInstallments.length})`
                     }));
-
+                    
                     await syncService.saveTransactionsBatch(updatedTransactions, user.uid);
-
+                    
                     setTransactions(prev => {
                         const withoutDeleted = prev.filter(t => t.id !== id);
                         return withoutDeleted.map(t => {
@@ -260,7 +238,6 @@ const App: React.FC = () => {
 
     const handleSaveTransaction = async (payload: SavePayload) => {
         if (!user) return;
-
         const { transaction, installmentsCount = 1, firstInstallmentDate, updateScope = 'single' } = payload;
 
         try {
@@ -269,15 +246,15 @@ const App: React.FC = () => {
 
             if (transactionToEdit) {
                 const originalSeriesId = transactionToEdit.seriesId;
-                const originalInstallmentsCount = originalSeriesId
-                    ? transactions.filter(t => t.seriesId === originalSeriesId).length
+                const originalInstallmentsCount = originalSeriesId 
+                    ? transactions.filter(t => t.seriesId === originalSeriesId).length 
                     : 1;
-
+                
                 if (originalInstallmentsCount !== installmentsCount) {
                     const toDelete = originalSeriesId
                         ? transactions.filter(t => t.seriesId === originalSeriesId)
                         : [transactionToEdit];
-
+                    
                     transactionsToDelete.push(...toDelete.map(t => t.id));
 
                     let startDate;
@@ -297,7 +274,6 @@ const App: React.FC = () => {
                         for (let i = 0; i < installmentsCount; i++) {
                             const installmentDate = new Date(startDate);
                             installmentDate.setMonth(startDate.getMonth() + i);
-
                             transactionsToSave.push({
                                 ...transaction,
                                 id: generateId(),
@@ -333,7 +309,7 @@ const App: React.FC = () => {
 
                             const installmentNumberMatch = originalInstallment.description.match(/\((\d+)\/\d+\)/);
                             const installmentNumber = installmentNumberMatch ? installmentNumberMatch[1] : '';
-
+                            
                             transactionsToSave.push({
                                 ...transaction,
                                 id: originalInstallment.id,
@@ -354,7 +330,7 @@ const App: React.FC = () => {
                     for (let i = 0; i < installmentsCount; i++) {
                         const installmentDate = new Date(startDate);
                         installmentDate.setMonth(startDate.getMonth() + i);
-
+                        
                         transactionsToSave.push({
                             ...transaction,
                             id: generateId(),
@@ -371,14 +347,14 @@ const App: React.FC = () => {
             if (transactionsToDelete.length > 0) {
                 await syncService.deleteTransactionsBatch(transactionsToDelete, user.uid);
             }
-
+            
             if (transactionsToSave.length > 0) {
                 await syncService.saveTransactionsBatch(transactionsToSave, user.uid);
             }
 
             setTransactions(prev => {
                 let updated = prev.filter(t => !transactionsToDelete.includes(t.id));
-
+                
                 transactionsToSave.forEach(newTrans => {
                     const existingIndex = updated.findIndex(t => t.id === newTrans.id);
                     if (existingIndex >= 0) {
@@ -387,7 +363,7 @@ const App: React.FC = () => {
                         updated.push(newTrans);
                     }
                 });
-
+                
                 return updated;
             });
 
@@ -400,7 +376,7 @@ const App: React.FC = () => {
 
     const handleGenerateRecurring = async (year: number, month: number) => {
         if (!user) return;
-
+        
         const existingSignatures = new Set(
             transactions
                 .filter(t => new Date(t.date).getFullYear() === year && new Date(t.date).getMonth() === month - 1)
@@ -443,9 +419,9 @@ const App: React.FC = () => {
         try {
             const id = transaction.id || generateId();
             const fullTransaction = { ...transaction, id };
-
+            
             await syncService.saveRecurringTransaction(fullTransaction, user.uid);
-
+            
             setRecurringTransactions(prev => {
                 const existing = prev.findIndex(t => t.id === id);
                 if (existing >= 0) {
@@ -475,28 +451,14 @@ const App: React.FC = () => {
     };
 
     // --- Views principais (iguais ao seu código original) ---
-    // Dashboard, IRPF e ListView continuam intactos.
+    // Dashboard, IRPF e ListView continuam intactos, removi apenas IA.
 
-    if (authLoading)
-        return <div className="flex h-screen items-center justify-center text-gray-500 dark:text-gray-400">Carregando...</div>;
+    // --- Renderização ---
+    if (authLoading) return <div className="flex h-screen items-center justify-center text-gray-500 dark:text-gray-400">Carregando...</div>;
     if (!user) return <Login />;
 
     return (
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-
-            {/* === ANIMAÇÃO DO SNACKBAR === */}
-            <style>
-                {`
-                @keyframes fadeInOut {
-                    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-                    10% { opacity: 1; transform: translateX(-50%) translateY(0); }
-                    90% { opacity: 1; }
-                    100% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-                }
-                `}
-            </style>
-            {/* === FIM ANIMAÇÃO === */}
-
             <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
                     <div className="flex w-full sm:w-auto justify-between items-center">
@@ -505,7 +467,7 @@ const App: React.FC = () => {
                             Sair
                         </button>
                     </div>
-
+                    
                     <div className="flex items-center w-full sm:w-auto justify-around sm:justify-end sm:space-x-2">
                         <button onClick={handleSignOut} className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 mr-4">
                             Sair
@@ -572,27 +534,25 @@ const App: React.FC = () => {
                             <ListIcon className="w-6 h-6" />
                         </button>
 
-                        <button
+                        <button 
                             onClick={() => setIsRecurringModalOpen(true)}
                             className="flex items-center bg-gray-600 text-white px-3 py-2 rounded-md shadow hover:bg-gray-700"
                             title="Contas Fixas"
                         >
-                            <CalendarIcon className="w-5 h-5 sm:mr-2" />
+                            <CalendarIcon className="w-5 h-5 sm:mr-2"/>
                             <span className="hidden sm:inline">Contas Fixas</span>
                         </button>
-
-                        <button
-                            onClick={handleAddTransaction}
+                        <button 
+                            onClick={handleAddTransaction} 
                             className="flex items-center bg-indigo-600 text-white px-3 py-2 rounded-md shadow hover:bg-indigo-700"
                             title="Adicionar Lançamento"
                         >
-                            <PlusIcon className="w-5 h-5 sm:mr-2" />
+                            <PlusIcon className="w-5 h-5 sm:mr-2"/>
                             <span className="hidden sm:inline">Adicionar</span>
                         </button>
                     </div>
                 </div>
             </header>
-
             <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
                 {dataLoading ? (
                     <div className="flex justify-center items-center py-20">
@@ -606,14 +566,7 @@ const App: React.FC = () => {
                             onFilterChange={setFilters}
                             accounts={accounts}
                         />
-
-                        {activeView === 'dashboard' && (
-                            <CustomChartView
-                                transactions={filteredTransactions}
-                                accounts={accounts}
-                            />
-                        )}
-
+                        {activeView === 'dashboard' && <CustomChartView transactions={filteredTransactions} accounts={accounts} />}
                         {activeView === 'list' && <div>LIST VIEW ADAPTADO AQUI</div>}
                         {activeView === 'irpf' && <div>IRPF VIEW AQUI</div>}
                     </>
@@ -629,7 +582,7 @@ const App: React.FC = () => {
                 transactions={transactions}
             />
 
-            <RecurringTransactionsModal
+            <RecurringTransactionsModal 
                 isOpen={isRecurringModalOpen}
                 onClose={() => setIsRecurringModalOpen(false)}
                 accounts={accounts}
@@ -640,35 +593,11 @@ const App: React.FC = () => {
                 onDeleteItem={handleDeleteRecurring}
             />
 
-            <ExportModal
+            <ExportModal 
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
                 transactions={filteredTransactions}
             />
-
-            {/* === SNACKBAR === */}
-            {showSnackbar && (
-                <div
-                    style={{
-                        position: "fixed",
-                        bottom: "20px",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        backgroundColor: "#323232",
-                        color: "#fff",
-                        padding: "14px 20px",
-                        borderRadius: "8px",
-                        boxShadow: "0px 2px 10px rgba(0,0,0,0.3)",
-                        zIndex: 2000,
-                        fontSize: "16px",
-                        animation: "fadeInOut 3s",
-                    }}
-                >
-                    {snackbarMessage}
-                </div>
-            )}
-            {/* === FIM SNACKBAR === */}
-
         </div>
     );
 };

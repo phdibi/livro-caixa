@@ -22,7 +22,7 @@ import {
   PendingCollection,
 } from "./cacheService";
 
-// ======== CONTAS PADRÃO ========
+// ========== CONTAS PADRÃO ==========
 const initialAccounts: Omit<Account, "id">[] = [
   { number: 101, name: "Sede", type: "Despesa" },
   { number: 102, name: "Administrativas", type: "Despesa" },
@@ -87,7 +87,7 @@ const initialAccounts: Omit<Account, "id">[] = [
   { number: 319, name: "Embrioes", type: "Receita" },
 ];
 
-// ======== HELPERS ========
+// ========== HELPERS ==========
 const generateId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -103,25 +103,19 @@ const getSixMonthsAgo = (): string => {
   return date.toISOString().split("T")[0];
 };
 
-// ======== SERVICE ========
+// ========== SYNC SERVICE ==========
 class SyncService {
   private changeListenerUnsubscribe: Unsubscribe | null = null;
   private currentUserId: string | null = null;
   private onDataChange: (() => void) | null = null;
-
-  // NOVO: Callback do snackbar
-  private onSyncSuccess: (() => void) | null = null;
-
-  setSyncSuccessCallback(cb: () => void) {
-    this.onSyncSuccess = cb;
-  }
+  private onlineListener: (() => void) | null = null;
 
   private get isOnline(): boolean {
     if (typeof navigator === "undefined") return true;
     return navigator.onLine;
   }
 
-  // ======== INIT ========
+  // ========== INITIALIZE ==========
   async initialize(
     userId: string,
     onDataChange: () => void
@@ -133,30 +127,179 @@ class SyncService {
     this.currentUserId = userId;
     this.onDataChange = onDataChange;
 
-    const trx = await cacheService.getTransactions(userId);
-    const acc = await cacheService.getAccounts(userId);
-    const rec = await cacheService.getRecurringTransactions(userId);
+    this.setupOnlineListener();
+
+    const transactions = await cacheService.getTransactions(userId);
+    const accounts = await cacheService.getAccounts(userId);
+    const recurringTransactions =
+      await cacheService.getRecurringTransactions(userId);
 
     if (this.isOnline) {
       await this.syncPendingOperations(userId);
     }
 
+    const needsTrans = await cacheService.needsSync(userId, "transactions", 60);
+    const needsAcc = await cacheService.needsSync(userId, "accounts", 1440);
+    const needsRec = await cacheService.needsSync(
+      userId,
+      "recurring_transactions",
+      60
+    );
+
+    if (this.isOnline && (needsTrans || needsAcc || needsRec)) {
+      this.syncInBackground(userId, needsTrans, needsAcc, needsRec);
+    }
+
     this.setupChangeListener(userId);
 
-    return { transactions: trx, accounts: acc, recurringTransactions: rec };
+    return { transactions, accounts, recurringTransactions };
   }
 
-  // ======== ONLINE LISTENER ========
+  private setupOnlineListener() {
+    if (typeof window === "undefined") return;
+    if (this.onlineListener) return;
+
+    this.onlineListener = () => {
+      if (!this.currentUserId) return;
+
+      this.syncPendingOperations(this.currentUserId)
+        .then(() =>
+          this.syncInBackground(
+            this.currentUserId!,
+            true,
+            true,
+            true
+          )
+        )
+        .catch(console.error);
+    };
+
+    window.addEventListener("online", this.onlineListener);
+  }
+
+  private async syncInBackground(
+    userId: string,
+    doTrans: boolean,
+    doAcc: boolean,
+    doRec: boolean
+  ) {
+    try {
+      if (doAcc) await this.syncAccounts(userId);
+      if (doTrans) await this.syncTransactions(userId);
+      if (doRec) await this.syncRecurringTransactions(userId);
+
+      this.onDataChange && this.onDataChange();
+    } catch (err) {
+      console.error("Erro background sync:", err);
+    }
+  }
+
+  // ========== FIRESTORE SYNC ==========
+  private async syncAccounts(userId: string): Promise<Account[]> {
+    const q = query(collection(db, "accounts"), where("userId", "==", userId));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      const accounts = await this.seedAccounts(userId);
+      await cacheService.saveAccounts(accounts, userId);
+      await cacheService.setSyncMetadata(userId, "accounts");
+      return accounts;
+    }
+
+    const accounts = snapshot.docs.map(
+      (d) => ({ id: d.id, ...d.data() } as Account)
+    );
+
+    await cacheService.clearAccounts(userId);
+    await cacheService.saveAccounts(accounts, userId);
+    await cacheService.setSyncMetadata(userId, "accounts");
+
+    return accounts;
+  }
+
+  private async seedAccounts(userId: string): Promise<Account[]> {
+    const batch = writeBatch(db);
+    const accounts: Account[] = [];
+
+    initialAccounts.forEach((acc) => {
+      const id = generateId();
+      const ref = doc(db, "accounts", id);
+      const account = { ...acc, id, userId };
+      batch.set(ref, account);
+      accounts.push(account);
+    });
+
+    await batch.commit();
+    await this.updateChangeMarker(userId);
+
+    return accounts;
+  }
+
+  private async syncTransactions(userId: string): Promise<Transaction[]> {
+    const sixMonthsAgo = getSixMonthsAgo();
+
+    const q = query(
+      collection(db, "transactions"),
+      where("userId", "==", userId),
+      where("date", ">=", sixMonthsAgo)
+    );
+
+    const snapshot = await getDocs(q);
+    const transactions = snapshot.docs.map(
+      (d) => ({ id: d.id, ...d.data() } as Transaction)
+    );
+
+    await cacheService.clearTransactions(userId);
+    await cacheService.saveTransactions(transactions, userId);
+    await cacheService.setSyncMetadata(userId, "transactions");
+
+    return transactions;
+  }
+
+  private async syncRecurringTransactions(
+    userId: string
+  ): Promise<RecurringTransaction[]> {
+    const q = query(
+      collection(db, "recurring_transactions"),
+      where("userId", "==", userId)
+    );
+
+    const snapshot = await getDocs(q);
+    const recurring = snapshot.docs.map(
+      (d) => ({ id: d.id, ...d.data() } as RecurringTransaction)
+    );
+
+    await cacheService.clearRecurringTransactions(userId);
+    await cacheService.saveRecurringTransactions(recurring, userId);
+    await cacheService.setSyncMetadata(userId, "recurring_transactions");
+
+    return recurring;
+  }
+
+  // ========== CHANGE LISTENER ==========
   private setupChangeListener(userId: string) {
     if (this.changeListenerUnsubscribe)
       this.changeListenerUnsubscribe();
 
-    const ref = doc(db, "user_sync", userId);
+    const controlRef = doc(db, "user_sync", userId);
 
-    this.changeListenerUnsubscribe = onSnapshot(ref, async () => {
-      if (this.onSyncSuccess) this.onSyncSuccess();
-      this.syncInBackground(userId);
-    });
+    this.changeListenerUnsubscribe = onSnapshot(
+      controlRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as any;
+        const last = data?.lastChange?.toMillis?.() || 0;
+
+        cacheService
+          .getSyncMetadata(userId, "transactions")
+          .then((meta) => {
+            if (meta && last > meta.lastSync) {
+              this.syncInBackground(userId, true, false, true);
+            }
+          });
+      },
+      console.error
+    );
   }
 
   private async updateChangeMarker(userId: string) {
@@ -167,7 +310,7 @@ class SyncService {
     );
   }
 
-  // ======== FILA OFFLINE ========
+  // ========== FILA OFFLINE ==========
   private async enqueueOperation(params: {
     userId: string;
     collection: PendingCollection;
@@ -188,7 +331,7 @@ class SyncService {
     await cacheService.addPendingOperation(op);
   }
 
-  async syncPendingOperations(userId: string) {
+  async syncPendingOperations(userId: string): Promise<void> {
     if (!this.isOnline) return;
 
     const ops = await cacheService.getPendingOperations(userId);
@@ -199,54 +342,55 @@ class SyncService {
         const ref = doc(db, op.collection, op.docId);
 
         if (op.action === "set") {
-          await setDoc(ref, op.data);
+          await setDoc(ref, op.data!);
         } else {
           await deleteDoc(ref);
         }
 
         await cacheService.removePendingOperation(op.id);
-      } catch {
+      } catch (err) {
+        console.error("Erro ao sincronizar operação pendente:", err);
         break;
       }
     }
 
-    if (this.onSyncSuccess) this.onSyncSuccess();
-    await this.updateChangeMarker(userId);
+    if (this.isOnline) await this.updateChangeMarker(userId);
   }
 
-  // ======== CRUD OFFLINE/ONLINE ========
-  async saveTransaction(trx: Transaction, userId: string) {
-    await cacheService.saveTransaction(trx, userId);
+  // ========== CRUD OFFLINE/ONLINE ==========
+  async saveTransaction(
+    transaction: Transaction,
+    userId: string
+  ): Promise<void> {
+    await cacheService.saveTransaction(transaction, userId);
+
+    const data = { ...transaction, userId };
 
     if (!this.isOnline) {
       return this.enqueueOperation({
         userId,
         collection: "transactions",
         action: "set",
-        docId: trx.id,
-        data: { ...trx, userId },
+        docId: transaction.id,
+        data,
       });
     }
 
     try {
-      await setDoc(doc(db, "transactions", trx.id), {
-        ...trx,
-        userId,
-      });
-      if (this.onSyncSuccess) this.onSyncSuccess();
+      await setDoc(doc(db, "transactions", transaction.id), data);
       await this.updateChangeMarker(userId);
-    } catch {
+    } catch (err) {
       await this.enqueueOperation({
         userId,
         collection: "transactions",
         action: "set",
-        docId: trx.id,
-        data: { ...trx, userId },
+        docId: transaction.id,
+        data,
       });
     }
   }
 
-  async deleteTransaction(id: string, userId: string) {
+  async deleteTransaction(id: string, userId: string): Promise<void> {
     await cacheService.deleteTransaction(id);
 
     if (!this.isOnline) {
@@ -260,9 +404,8 @@ class SyncService {
 
     try {
       await deleteDoc(doc(db, "transactions", id));
-      if (this.onSyncSuccess) this.onSyncSuccess();
       await this.updateChangeMarker(userId);
-    } catch {
+    } catch (err) {
       await this.enqueueOperation({
         userId,
         collection: "transactions",
@@ -272,38 +415,45 @@ class SyncService {
     }
   }
 
-  async saveRecurringTransaction(tr: RecurringTransaction, userId: string) {
-    await cacheService.saveRecurringTransaction(tr, userId);
+  async saveRecurringTransaction(
+    transaction: RecurringTransaction,
+    userId: string
+  ): Promise<void> {
+    await cacheService.saveRecurringTransaction(transaction, userId);
+
+    const data = { ...transaction, userId };
 
     if (!this.isOnline) {
       return this.enqueueOperation({
         userId,
         collection: "recurring_transactions",
         action: "set",
-        docId: tr.id,
-        data: { ...tr, userId },
+        docId: transaction.id,
+        data,
       });
     }
 
     try {
-      await setDoc(doc(db, "recurring_transactions", tr.id), {
-        ...tr,
-        userId,
-      });
-      if (this.onSyncSuccess) this.onSyncSuccess();
+      await setDoc(
+        doc(db, "recurring_transactions", transaction.id),
+        data
+      );
       await this.updateChangeMarker(userId);
-    } catch {
+    } catch (err) {
       await this.enqueueOperation({
         userId,
         collection: "recurring_transactions",
         action: "set",
-        docId: tr.id,
-        data: { ...tr, userId },
+        docId: transaction.id,
+        data,
       });
     }
   }
 
-  async deleteRecurringTransaction(id: string, userId: string) {
+  async deleteRecurringTransaction(
+    id: string,
+    userId: string
+  ): Promise<void> {
     await cacheService.deleteRecurringTransaction(id);
 
     if (!this.isOnline) {
@@ -317,9 +467,8 @@ class SyncService {
 
     try {
       await deleteDoc(doc(db, "recurring_transactions", id));
-      if (this.onSyncSuccess) this.onSyncSuccess();
       await this.updateChangeMarker(userId);
-    } catch {
+    } catch (err) {
       await this.enqueueOperation({
         userId,
         collection: "recurring_transactions",
@@ -329,12 +478,20 @@ class SyncService {
     }
   }
 
+  // ========== CLEANUP ==========
   cleanup() {
-    if (this.changeListenerUnsubscribe)
+    if (this.changeListenerUnsubscribe) {
       this.changeListenerUnsubscribe();
+      this.changeListenerUnsubscribe = null;
+    }
+    if (typeof window !== "undefined" && this.onlineListener) {
+      window.removeEventListener("online", this.onlineListener);
+      this.onlineListener = null;
+    }
     this.currentUserId = null;
     this.onDataChange = null;
   }
 }
 
+// Singleton
 export const syncService = new SyncService();
