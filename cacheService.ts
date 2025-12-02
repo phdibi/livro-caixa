@@ -1,331 +1,256 @@
-// cacheService.ts - Serviço de Cache com IndexedDB
+// cacheService.ts
+// Implementação simples usando localStorage em vez de IndexedDB
+// para evitar erros de versão ("VersionError") e manter o código estável.
+
 import { Transaction, Account, RecurringTransaction } from './types';
 
-const DB_NAME = 'LivroCaixaDB';
-const DB_VERSION = 1;
+type CacheCollection = 'transactions' | 'accounts' | 'recurring_transactions';
 
 interface SyncMetadata {
-  id: string;
-  collection: string;
-  lastSync: number;
-  userId: string;
+  lastSync: number; // timestamp em ms
 }
 
 class CacheService {
-  private db: IDBDatabase | null = null;
-  private dbReady: Promise<IDBDatabase>;
+  // --- helpers gerais ---
 
-  constructor() {
-    this.dbReady = this.initDB();
+  private hasStorage(): boolean {
+    return typeof window !== 'undefined' && !!window.localStorage;
   }
 
-  private initDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = () => reject(request.error);
-
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        // Store para transações
-        if (!db.objectStoreNames.contains('transactions')) {
-          const transStore = db.createObjectStore('transactions', { keyPath: 'id' });
-          transStore.createIndex('userId', 'userId', { unique: false });
-          transStore.createIndex('date', 'date', { unique: false });
-          transStore.createIndex('userDate', ['userId', 'date'], { unique: false });
-        }
-
-        // Store para contas
-        if (!db.objectStoreNames.contains('accounts')) {
-          const accStore = db.createObjectStore('accounts', { keyPath: 'id' });
-          accStore.createIndex('userId', 'userId', { unique: false });
-        }
-
-        // Store para transações recorrentes
-        if (!db.objectStoreNames.contains('recurring_transactions')) {
-          const recStore = db.createObjectStore('recurring_transactions', { keyPath: 'id' });
-          recStore.createIndex('userId', 'userId', { unique: false });
-        }
-
-        // Store para metadados de sincronização
-        if (!db.objectStoreNames.contains('sync_metadata')) {
-          db.createObjectStore('sync_metadata', { keyPath: 'id' });
-        }
-      };
-    });
+  private keyFor(userId: string, base: string): string {
+    return `${base}_${userId}`;
   }
 
-  private async getDB(): Promise<IDBDatabase> {
-    if (this.db) return this.db;
-    return this.dbReady;
+  private syncKey(userId: string, collection: CacheCollection): string {
+    return `sync_meta_${userId}_${collection}`;
   }
 
-  // ============ TRANSACTIONS ============
+  private readJSON<T>(key: string, fallback: T): T {
+    if (!this.hasStorage()) return fallback;
 
-  async getTransactions(userId: string, startDate?: string, endDate?: string): Promise<Transaction[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('transactions', 'readonly');
-      const store = transaction.objectStore('transactions');
-      const index = store.index('userId');
-      const request = index.getAll(userId);
-
-      request.onsuccess = () => {
-        let results = request.result as Transaction[];
-        
-        // Filtrar por data se especificado
-        if (startDate || endDate) {
-          results = results.filter(t => {
-            if (startDate && t.date < startDate) return false;
-            if (endDate && t.date > endDate) return false;
-            return true;
-          });
-        }
-        
-        resolve(results);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw) as T;
+    } catch (err) {
+      console.error('Erro ao ler do localStorage:', err);
+      return fallback;
+    }
   }
 
-  async saveTransactions(transactions: Transaction[], userId: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('transactions', 'readwrite');
-      const store = transaction.objectStore('transactions');
+  private writeJSON(key: string, value: any): void {
+    if (!this.hasStorage()) return;
 
-      transactions.forEach(t => {
-        store.put({ ...t, userId });
-      });
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (err) {
+      console.error('Erro ao gravar no localStorage:', err);
+    }
   }
 
-  async saveTransaction(trans: Transaction, userId: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('transactions', 'readwrite');
-      const store = transaction.objectStore('transactions');
-      store.put({ ...trans, userId });
+  private removeKey(key: string): void {
+    if (!this.hasStorage()) return;
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    try {
+      window.localStorage.removeItem(key);
+    } catch (err) {
+      console.error('Erro ao remover do localStorage:', err);
+    }
   }
 
+  // --- TRANSAÇÕES ---
+
+  async getTransactions(userId: string): Promise<Transaction[]> {
+    const key = this.keyFor(userId, 'transactions');
+    return this.readJSON<Transaction[]>(key, []);
+  }
+
+  async saveTransactions(
+    transactions: Transaction[],
+    userId: string
+  ): Promise<void> {
+    const key = this.keyFor(userId, 'transactions');
+    this.writeJSON(key, transactions);
+  }
+
+  async saveTransaction(
+    transaction: Transaction,
+    userId: string
+  ): Promise<void> {
+    const key = this.keyFor(userId, 'transactions');
+    const current = this.readJSON<Transaction[]>(key, []);
+
+    const index = current.findIndex((t) => t.id === transaction.id);
+    if (index >= 0) {
+      current[index] = transaction;
+    } else {
+      current.push(transaction);
+    }
+
+    this.writeJSON(key, current);
+  }
+
+  // ATENÇÃO: aqui não temos userId, então procuramos o id em todas
+  // as chaves de transações_* existentes. Na prática você só terá 1 usuário.
   async deleteTransaction(id: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('transactions', 'readwrite');
-      const store = transaction.objectStore('transactions');
-      store.delete(id);
+    if (!this.hasStorage()) return;
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    try {
+      const keysToUpdate: string[] = [];
+
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith('transactions_')) {
+          keysToUpdate.push(key);
+        }
+      }
+
+      keysToUpdate.forEach((key) => {
+        const list = this.readJSON<Transaction[]>(key, []);
+        const filtered = list.filter((t) => t.id !== id);
+        this.writeJSON(key, filtered);
+      });
+    } catch (err) {
+      console.error('Erro ao excluir transação do cache:', err);
+    }
   }
 
   async clearTransactions(userId: string): Promise<void> {
-    const transactions = await this.getTransactions(userId);
-    const db = await this.getDB();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('transactions', 'readwrite');
-      const store = transaction.objectStore('transactions');
-      
-      transactions.forEach(t => store.delete(t.id));
-      
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    const key = this.keyFor(userId, 'transactions');
+    this.writeJSON(key, []);
   }
 
-  // ============ ACCOUNTS ============
+  // --- CONTAS ---
 
   async getAccounts(userId: string): Promise<Account[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('accounts', 'readonly');
-      const store = transaction.objectStore('accounts');
-      const index = store.index('userId');
-      const request = index.getAll(userId);
-
-      request.onsuccess = () => resolve(request.result as Account[]);
-      request.onerror = () => reject(request.error);
-    });
+    const key = this.keyFor(userId, 'accounts');
+    const accounts = this.readJSON<Account[]>(key, []);
+    // Garantir ordenação por número (usado diversas vezes no app)
+    return accounts.sort((a, b) => a.number - b.number);
   }
 
   async saveAccounts(accounts: Account[], userId: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('accounts', 'readwrite');
-      const store = transaction.objectStore('accounts');
-
-      accounts.forEach(a => {
-        store.put({ ...a, userId });
-      });
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    const key = this.keyFor(userId, 'accounts');
+    this.writeJSON(key, accounts);
   }
 
   async clearAccounts(userId: string): Promise<void> {
-    const accounts = await this.getAccounts(userId);
-    const db = await this.getDB();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('accounts', 'readwrite');
-      const store = transaction.objectStore('accounts');
-      
-      accounts.forEach(a => store.delete(a.id));
-      
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    const key = this.keyFor(userId, 'accounts');
+    this.writeJSON(key, []);
   }
 
-  // ============ RECURRING TRANSACTIONS ============
+  // --- RECURRING (CONTAS FIXAS) ---
 
-  async getRecurringTransactions(userId: string): Promise<RecurringTransaction[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('recurring_transactions', 'readonly');
-      const store = transaction.objectStore('recurring_transactions');
-      const index = store.index('userId');
-      const request = index.getAll(userId);
-
-      request.onsuccess = () => resolve(request.result as RecurringTransaction[]);
-      request.onerror = () => reject(request.error);
-    });
+  async getRecurringTransactions(
+    userId: string
+  ): Promise<RecurringTransaction[]> {
+    const key = this.keyFor(userId, 'recurring_transactions');
+    return this.readJSON<RecurringTransaction[]>(key, []);
   }
 
-  async saveRecurringTransactions(transactions: RecurringTransaction[], userId: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('recurring_transactions', 'readwrite');
-      const store = transaction.objectStore('recurring_transactions');
-
-      transactions.forEach(t => {
-        store.put({ ...t, userId });
-      });
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+  async saveRecurringTransactions(
+    list: RecurringTransaction[],
+    userId: string
+  ): Promise<void> {
+    const key = this.keyFor(userId, 'recurring_transactions');
+    this.writeJSON(key, list);
   }
 
-  async saveRecurringTransaction(trans: RecurringTransaction, userId: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('recurring_transactions', 'readwrite');
-      const store = transaction.objectStore('recurring_transactions');
-      store.put({ ...trans, userId });
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+  async saveRecurringTransaction(
+    item: RecurringTransaction,
+    userId: string
+  ): Promise<void> {
+    const key = this.keyFor(userId, 'recurring_transactions');
+    const current = this.readJSON<RecurringTransaction[]>(key, []);
+    const index = current.findIndex((t) => t.id === item.id);
+    if (index >= 0) {
+      current[index] = item;
+    } else {
+      current.push(item);
+    }
+    this.writeJSON(key, current);
   }
 
   async deleteRecurringTransaction(id: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('recurring_transactions', 'readwrite');
-      const store = transaction.objectStore('recurring_transactions');
-      store.delete(id);
+    if (!this.hasStorage()) return;
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    try {
+      const keysToUpdate: string[] = [];
+
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith('recurring_transactions_')) {
+          keysToUpdate.push(key);
+        }
+      }
+
+      keysToUpdate.forEach((key) => {
+        const list = this.readJSON<RecurringTransaction[]>(key, []);
+        const filtered = list.filter((t) => t.id !== id);
+        this.writeJSON(key, filtered);
+      });
+    } catch (err) {
+      console.error(
+        'Erro ao excluir transação recorrente do cache:',
+        err
+      );
+    }
   }
 
   async clearRecurringTransactions(userId: string): Promise<void> {
-    const recurring = await this.getRecurringTransactions(userId);
-    const db = await this.getDB();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('recurring_transactions', 'readwrite');
-      const store = transaction.objectStore('recurring_transactions');
-      
-      recurring.forEach(r => store.delete(r.id));
-      
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+    const key = this.keyFor(userId, 'recurring_transactions');
+    this.writeJSON(key, []);
   }
 
-  // ============ SYNC METADATA ============
+  // --- METADADOS DE SINCRONIZAÇÃO ---
 
-  async getSyncMetadata(userId: string, collection: string): Promise<SyncMetadata | null> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('sync_metadata', 'readonly');
-      const store = transaction.objectStore('sync_metadata');
-      const request = store.get(`${userId}_${collection}`);
-
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
+  async setSyncMetadata(
+    userId: string,
+    collection: CacheCollection
+  ): Promise<void> {
+    const key = this.syncKey(userId, collection);
+    const meta: SyncMetadata = { lastSync: Date.now() };
+    this.writeJSON(key, meta);
   }
 
-  async setSyncMetadata(userId: string, collection: string): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('sync_metadata', 'readwrite');
-      const store = transaction.objectStore('sync_metadata');
-      
-      store.put({
-        id: `${userId}_${collection}`,
-        collection,
-        lastSync: Date.now(),
-        userId
-      });
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+  async getSyncMetadata(
+    userId: string,
+    collection: CacheCollection
+  ): Promise<SyncMetadata | null> {
+    const key = this.syncKey(userId, collection);
+    const meta = this.readJSON<SyncMetadata | null>(key, null as any);
+    return meta ?? null;
   }
 
-  async clearAllSyncMetadata(userId: string): Promise<void> {
-    const db = await this.getDB();
-    const collections = ['transactions', 'accounts', 'recurring_transactions'];
-    
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('sync_metadata', 'readwrite');
-      const store = transaction.objectStore('sync_metadata');
-      
-      collections.forEach(c => store.delete(`${userId}_${c}`));
-      
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
+  async needsSync(
+    userId: string,
+    collection: CacheCollection,
+    maxAgeMinutes: number
+  ): Promise<boolean> {
+    const meta = await this.getSyncMetadata(userId, collection);
+    if (!meta) return true;
+
+    const ageMs = Date.now() - meta.lastSync;
+    const ageMinutes = ageMs / 60000;
+    return ageMinutes >= maxAgeMinutes;
   }
 
-  // ============ UTILITY ============
+  // --- LIMPEZA GERAL ---
 
   async clearAllUserData(userId: string): Promise<void> {
+    // limpa dados
     await this.clearTransactions(userId);
     await this.clearAccounts(userId);
     await this.clearRecurringTransactions(userId);
-    await this.clearAllSyncMetadata(userId);
-  }
 
-  async needsSync(userId: string, collection: string, maxAgeMinutes: number = 30): Promise<boolean> {
-    const metadata = await this.getSyncMetadata(userId, collection);
-    if (!metadata) return true;
-    
-    const age = Date.now() - metadata.lastSync;
-    return age > maxAgeMinutes * 60 * 1000;
+    // limpa metadados
+    (['transactions', 'accounts', 'recurring_transactions'] as CacheCollection[]).forEach(
+      (collection) => {
+        const key = this.syncKey(userId, collection);
+        this.removeKey(key);
+      }
+    );
   }
 }
 
-// Singleton instance
 export const cacheService = new CacheService();
