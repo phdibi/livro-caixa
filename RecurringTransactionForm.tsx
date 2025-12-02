@@ -252,7 +252,7 @@ const RecurringTransactionForm: React.FC<RecurringTransactionFormProps> = ({
                                 </option>
                                 <option value={IrCategory.SAUDE}>Saúde</option>
                                 <option value={IrCategory.EDUCACAO}>Educação</option>
-                                <option value={IrCategory.LIVRO_CAIXA}>Livro-caixa</option>
+                                <option value={IrCategory.LIVRO_CAIXA}>Livro Caixa</option>
                                 <option value={IrCategory.CARNE_LEAO}>Carnê-Leão</option>
                                 <option value={IrCategory.BENS_DIREITOS}>Bens e direitos</option>
                                 <option value={IrCategory.ALUGUEL}>Aluguel</option>
