@@ -5,6 +5,8 @@ import {
   Account,
   RecurringTransaction,
   TransactionType,
+  IrCategory,
+  ReceiptStatus,
 } from './types';
 import EntryForm from './EntryForm';
 import TransactionFilter from './TransactionFilter';
@@ -240,6 +242,49 @@ const App: React.FC = () => {
       margem: entradas - saidas,
     };
   }, [filteredTransactions]);
+
+      const irpfResumo = useMemo(() => {
+    type CatKey = IrCategory | 'NAO_CLASSIFICADO';
+
+    const porCategoria = new Map<
+      CatKey,
+      { categoria: CatKey; total: number; count: number }
+    >();
+    const pendentesComprovante: Transaction[] = [];
+
+    filteredTransactions.forEach((t) => {
+      const cat = (t.irCategory as IrCategory | undefined) ?? 'NAO_CLASSIFICADO';
+
+      const isRelevante =
+        t.irCategory && t.irCategory !== IrCategory.NAO_DEDUTIVEL;
+
+      if (isRelevante) {
+        const key = cat as CatKey;
+        const atual =
+          porCategoria.get(key) || { categoria: key, total: 0, count: 0 };
+        atual.total += t.amount;
+        atual.count += 1;
+        porCategoria.set(key, atual);
+      }
+
+      const precisaRecibo =
+        isRelevante &&
+        t.type === TransactionType.SAIDA &&
+        t.receiptStatus !== ReceiptStatus.ATTACHED &&
+        t.receiptStatus !== ReceiptStatus.NOT_REQUIRED;
+
+      if (precisaRecibo) {
+        pendentesComprovante.push(t);
+      }
+    });
+
+    const resumoArray = Array.from(porCategoria.values()).sort(
+      (a, b) => b.total - a.total
+    );
+
+    return { resumoArray, pendentesComprovante };
+  }, [filteredTransactions]);
+
 
 
   const handleAddTransaction = () => {
@@ -644,6 +689,63 @@ const App: React.FC = () => {
       currency: 'BRL',
     });
   };
+  const receiptStatusLabel = (status?: ReceiptStatus) => {
+    switch (status) {
+      case ReceiptStatus.HAS_BUT_NOT_ATTACHED:
+        return 'Tenho, mas não anexei';
+      case ReceiptStatus.ATTACHED:
+        return 'Comp. anexado';
+      case ReceiptStatus.LOST:
+        return 'Perdi o comp.';
+      case ReceiptStatus.NOT_REQUIRED:
+        return 'Isento de comp.';
+      case ReceiptStatus.NONE:
+      default:
+        return 's/ comprovante';
+    }
+  };
+
+  const receiptStatusClasses = (status?: ReceiptStatus) => {
+    switch (status) {
+      case ReceiptStatus.ATTACHED:
+        return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200';
+      case ReceiptStatus.HAS_BUT_NOT_ATTACHED:
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200';
+      case ReceiptStatus.LOST:
+        return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200';
+      case ReceiptStatus.NOT_REQUIRED:
+        return 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200';
+      case ReceiptStatus.NONE:
+      default:
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300';
+    }
+  };
+
+  const irCategoryLabel = (cat?: IrCategory) => {
+    switch (cat) {
+      case IrCategory.SAUDE:
+        return 'Saúde';
+      case IrCategory.EDUCACAO:
+        return 'Educação';
+      case IrCategory.LIVRO_CAIXA:
+        return 'Livro caixa';
+      case IrCategory.CARNE_LEAO:
+        return 'Carnê-Leão';
+      case IrCategory.ALUGUEL:
+        return 'Aluguel';
+      case IrCategory.BEM_DIREITO:
+        return 'Bens e direitos';
+      case IrCategory.ATIVIDADE_RURAL:
+        return 'Atividade Rural';
+      case IrCategory.OUTRA:
+        return 'Outra';
+      case IrCategory.NAO_DEDUTIVEL:
+        return 'Não dedutível / geral';
+      default:
+        return 'Não classificado';
+    }
+  };
+
 
   // --- Renderização ---
   if (authLoading)
@@ -858,6 +960,12 @@ const App: React.FC = () => {
                         <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
                           Fornecedor/Comprador
                         </th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                          Comprovante
+                        </th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                          Categoria IR
+                        </th>
                         <th className="px-4 py-2 text-right font-medium text-gray-500 dark:text-gray-300">
                           Valor
                         </th>
@@ -866,16 +974,21 @@ const App: React.FC = () => {
                         </th>
                       </tr>
                     </thead>
+
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                       {sortedTransactions.map((t) => (
-                        <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/40">
+                                                <tr
+                          key={t.id}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-900/40"
+                        >
                           <td className="px-4 py-2 whitespace-nowrap text-gray-800 dark:text-gray-100">
                             {new Date(t.date).toLocaleDateString('pt-BR')}
                           </td>
                           <td className="px-4 py-2 whitespace-nowrap">
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                t.type === 'Entrada'
+                                t.type === 'Entrada' ||
+                                t.type === TransactionType.ENTRADA
                                   ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
                                   : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
                               }`}
@@ -891,6 +1004,19 @@ const App: React.FC = () => {
                           </td>
                           <td className="px-4 py-2 text-gray-600 dark:text-gray-300">
                             {t.payee}
+                          </td>
+                          <td className="px-4 py-2 text-xs">
+                            <span
+                              className={
+                                'inline-flex items-center px-2 py-0.5 rounded-full font-medium ' +
+                                receiptStatusClasses(t.receiptStatus)
+                              }
+                            >
+                              {receiptStatusLabel(t.receiptStatus)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
+                            {irCategoryLabel(t.irCategory as IrCategory | undefined)}
                           </td>
                           <td className="px-4 py-2 text-right font-semibold text-gray-800 dark:text-gray-100">
                             {formatCurrency(t.amount)}
@@ -912,6 +1038,7 @@ const App: React.FC = () => {
                             </button>
                           </td>
                         </tr>
+
                       ))}
 
                       {sortedTransactions.length === 0 && (
@@ -932,18 +1059,154 @@ const App: React.FC = () => {
             )}
 
             {activeView === 'irpf' && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4 p-4 text-sm text-gray-700 dark:text-gray-200">
-                <p className="mb-2 font-semibold">
-                  Visão IRPF (em construção)
-                </p>
-                <p>
-                  Seus lançamentos já estão sendo salvos com categoria
-                  de IR e status de comprovante. Aqui você poderá gerar
-                  relatórios específicos para declaração do imposto de
-                  renda.
-                </p>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4 p-4 text-sm text-gray-700 dark:text-gray-200 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100">
+                    Resumo para Imposto de Renda
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Os valores abaixo consideram os mesmos filtros aplicados no topo
+                    (data, tipo, conta, busca). Use os filtros para ver apenas um ano,
+                    uma conta ou um tipo específico.
+                  </p>
+                </div>
+
+                {/* Tabela 1: resumo por categoria fiscal */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">
+                    Totais por categoria fiscal
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs md:text-sm divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-900/70">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Categoria
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-300">
+                            Nº de lançamentos
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-300">
+                            Total
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {irpfResumo.resumoArray.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhum lançamento relevante para IR com os filtros atuais.
+                            </td>
+                          </tr>
+                        )}
+
+                        {irpfResumo.resumoArray.map((row) => (
+                          <tr key={row.categoria}>
+                            <td className="px-3 py-2">
+                              {row.categoria === 'NAO_CLASSIFICADO'
+                                ? 'Não classificado'
+                                : irCategoryLabel(row.categoria as IrCategory)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {row.count}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold">
+                              {formatCurrency(row.total)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Tabela 2: pendências de comprovante */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">
+                    Lançamentos com pendência de comprovante
+                  </h3>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+                    São mostrados aqui apenas lançamentos com categoria fiscal
+                    diferente de &quot;Não dedutível&quot; em que o comprovante
+                    não está marcado como &quot;comp. anexado&quot; nem
+                    &quot;isento de comp.&quot;.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs md:text-sm divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-900/70">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Data
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Conta
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Histórico
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Categoria IR
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-300">
+                            Comprovante
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-300">
+                            Valor
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {irpfResumo.pendentesComprovante.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhuma pendência de comprovante com os filtros atuais.
+                            </td>
+                          </tr>
+                        )}
+
+                        {irpfResumo.pendentesComprovante.map((t) => (
+                          <tr key={t.id}>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {new Date(t.date).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {t.accountNumber} - {t.accountName}
+                            </td>
+                            <td className="px-3 py-2">
+                              {t.description}
+                            </td>
+                            <td className="px-3 py-2">
+                              {irCategoryLabel(t.irCategory as IrCategory | undefined)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={
+                                  'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] ' +
+                                  receiptStatusClasses(t.receiptStatus)
+                                }
+                              >
+                                {receiptStatusLabel(t.receiptStatus)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold">
+                              {formatCurrency(t.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
+
           </>
         )}
       </main>
