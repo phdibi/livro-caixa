@@ -12,11 +12,11 @@ export enum TransactionType {
  * - ATTACHED: comprovante anexado (com metadata nos campos de recibo)
  */
 export enum ReceiptStatus {
-  NONE = 'none',                      // Não informado / não tenho comprovante
-  HAS_BUT_NOT_ATTACHED = 'has-but-not-attached', // Tenho mas não anexei
-  ATTACHED = 'attached',              // Anexei o arquivo
-  LOST = 'lost',                      // Tinha mas perdi
-  NOT_REQUIRED = 'not-required',      // Isento de comprovante
+  NONE = 's/ comprovante',                      // Não informado / não tenho comprovante
+  HAS_BUT_NOT_ATTACHED = 'tenho, mas não anexei', // Tenho mas não anexei
+  ATTACHED = 'comp. anexado',              // Anexei o arquivo
+  LOST = 'perdi o comp.',                      // Tinha mas perdi
+  NOT_REQUIRED = 'isento de comp.',      // Isento de comprovante
 }
 
 /**
@@ -24,14 +24,14 @@ export enum ReceiptStatus {
  * Estes valores são técnicos; a interface pode exibir rótulos mais amigáveis.
  */
 export enum IrCategory {
-  NAO_DEDUTIVEL = 'nao-dedutivel',
+  NAO_DEDUTIVEL = 'nao dedutivel',
   SAUDE = 'saude',
   EDUCACAO = 'educacao',
-  LIVRO_CAIXA = 'livro-caixa',
-  CARNE_LEAO = 'carnê leão',
+  LIVRO_CAIXA = 'livro caixa',
+  CARNE_LEAO = 'carnê-leão',
   ALUGUEL = 'aluguel',
-  BEM_DIREITO = 'bem-direito',
-  ATIVIDADE_RURAL = 'atividade-rural',
+  BEM_DIREITO = 'ben e direitos',
+  ATIVIDADE_RURAL = 'atividade rural',
   OUTRA = 'outra',
 }
 
