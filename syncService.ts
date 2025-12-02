@@ -1,11 +1,10 @@
 // syncService.ts - Serviço de Sincronização Otimizada com Firebase
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
   doc,
-  getDoc,
   setDoc,
   deleteDoc,
   writeBatch,
@@ -14,8 +13,6 @@ import {
   serverTimestamp,
   orderBy,
   limit,
-  startAfter,
-  DocumentSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Transaction, Account, RecurringTransaction } from './types';
@@ -95,13 +92,6 @@ const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-// Calcular data de 6 meses atrás
-const getSixMonthsAgo = (): string => {
-  const date = new Date();
-  date.setMonth(date.getMonth() - 6);
-  return date.toISOString().split('T')[0];
-};
-
 class SyncService {
   private changeListenerUnsubscribe: Unsubscribe | null = null;
   private currentUserId: string | null = null;
@@ -109,7 +99,10 @@ class SyncService {
 
   // ============ INICIALIZAÇÃO ============
 
-  async initialize(userId: string, onDataChange: () => void): Promise<{
+  async initialize(
+    userId: string,
+    onDataChange: () => void
+  ): Promise<{
     transactions: Transaction[];
     accounts: Account[];
     recurringTransactions: RecurringTransaction[];
@@ -127,21 +120,27 @@ class SyncService {
     const needsAccSync = await cacheService.needsSync(userId, 'accounts', 1440); // 24h para accounts
     const needsRecSync = await cacheService.needsSync(userId, 'recurring_transactions', 60);
 
-    // 3. Sincronizar se necessário (em background, sem bloquear UI)
-    if (needsTransSync || needsAccSync || needsRecSync || transactions.length === 0) {
-      this.syncInBackground(userId, needsTransSync, needsAccSync, needsRecSync);
+    // 3. Se o cache estiver vazio, forçar sync mesmo que o "needsSync" diga que não
+    const shouldSyncTrans = needsTransSync || transactions.length === 0;
+    const shouldSyncAcc = needsAccSync || accounts.length === 0;
+    const shouldSyncRec =
+      needsRecSync || recurringTransactions.length === 0;
+
+    if (shouldSyncTrans || shouldSyncAcc || shouldSyncRec) {
+      // dispara em background, mas não bloqueia a UI
+      this.syncInBackground(userId, shouldSyncTrans, shouldSyncAcc, shouldSyncRec);
     }
 
-    // 4. Configurar listener leve para mudanças (apenas 1 documento de controle)
+    // 4. Listener leve de mudanças
     this.setupChangeListener(userId);
 
     return { transactions, accounts, recurringTransactions };
   }
 
   private async syncInBackground(
-    userId: string, 
-    syncTrans: boolean, 
-    syncAcc: boolean, 
+    userId: string,
+    syncTrans: boolean,
+    syncAcc: boolean,
     syncRec: boolean
   ) {
     try {
@@ -154,7 +153,7 @@ class SyncService {
       if (syncRec) {
         await this.syncRecurringTransactions(userId);
       }
-      
+
       // Notificar que dados foram atualizados
       if (this.onDataChange) {
         this.onDataChange();
@@ -169,7 +168,7 @@ class SyncService {
   private async syncAccounts(userId: string): Promise<Account[]> {
     const q = query(collection(db, 'accounts'), where('userId', '==', userId));
     const snapshot = await getDocs(q);
-    
+
     if (snapshot.empty) {
       // Seed accounts para novo usuário
       const accounts = await this.seedAccounts(userId);
@@ -178,11 +177,14 @@ class SyncService {
       return accounts;
     }
 
-    const accounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
+    const accounts = snapshot.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Account)
+    );
+
     await cacheService.clearAccounts(userId);
     await cacheService.saveAccounts(accounts, userId);
     await cacheService.setSyncMetadata(userId, 'accounts');
-    
+
     return accounts;
   }
 
@@ -190,7 +192,7 @@ class SyncService {
     const batch = writeBatch(db);
     const accounts: Account[] = [];
 
-    initialAccounts.forEach(acc => {
+    initialAccounts.forEach((acc) => {
       const id = generateId();
       const ref = doc(db, 'accounts', id);
       const account = { ...acc, id, userId };
@@ -199,38 +201,41 @@ class SyncService {
     });
 
     await batch.commit();
-    
+
     // Atualizar documento de controle
     await this.updateChangeMarker(userId);
-    
+
     return accounts;
   }
 
   // ============ SYNC TRANSACTIONS ============
 
   private async syncTransactions(userId: string): Promise<Transaction[]> {
-    // Carregar apenas últimos 6 meses por padrão
-    const sixMonthsAgo = getSixMonthsAgo();
-    
+    // Agora busca TODAS as transações do usuário.
+    // O filtro por período pode ser feito na UI / App.
     const q = query(
-      collection(db, 'transactions'), 
-      where('userId', '==', userId),
-      where('date', '>=', sixMonthsAgo)
+      collection(db, 'transactions'),
+      where('userId', '==', userId)
     );
-    
+
     const snapshot = await getDocs(q);
-    const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-    
+    const transactions = snapshot.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Transaction)
+    );
+
     // Limpar cache antigo e salvar novos dados
     await cacheService.clearTransactions(userId);
     await cacheService.saveTransactions(transactions, userId);
     await cacheService.setSyncMetadata(userId, 'transactions');
-    
+
     return transactions;
   }
 
-  // Carregar transações mais antigas sob demanda
-  async loadOlderTransactions(userId: string, beforeDate: string): Promise<Transaction[]> {
+  // Carregar transações mais antigas sob demanda (mantido caso você queira usar no futuro)
+  async loadOlderTransactions(
+    userId: string,
+    beforeDate: string
+  ): Promise<Transaction[]> {
     const q = query(
       collection(db, 'transactions'),
       where('userId', '==', userId),
@@ -240,26 +245,36 @@ class SyncService {
     );
 
     const snapshot = await getDocs(q);
-    const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-    
+    const transactions = snapshot.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Transaction)
+    );
+
     // Adicionar ao cache existente
     await cacheService.saveTransactions(transactions, userId);
-    
+
     return transactions;
   }
 
   // ============ SYNC RECURRING ============
 
-  private async syncRecurringTransactions(userId: string): Promise<RecurringTransaction[]> {
-    const q = query(collection(db, 'recurring_transactions'), where('userId', '==', userId));
+  private async syncRecurringTransactions(
+    userId: string
+  ): Promise<RecurringTransaction[]> {
+    const q = query(
+      collection(db, 'recurring_transactions'),
+      where('userId', '==', userId)
+    );
     const snapshot = await getDocs(q);
-    
-    const recurring = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RecurringTransaction));
-    
+
+    const recurring = snapshot.docs.map(
+      (docSnap) =>
+        ({ id: docSnap.id, ...docSnap.data() } as RecurringTransaction)
+    );
+
     await cacheService.clearRecurringTransactions(userId);
     await cacheService.saveRecurringTransactions(recurring, userId);
     await cacheService.setSyncMetadata(userId, 'recurring_transactions');
-    
+
     return recurring;
   }
 
@@ -269,57 +284,77 @@ class SyncService {
     // Limpar listener anterior
     if (this.changeListenerUnsubscribe) {
       this.changeListenerUnsubscribe();
+      this.changeListenerUnsubscribe = null;
     }
 
     // Listener em apenas UM documento de controle, não em toda a coleção
     const controlDocRef = doc(db, 'user_sync', userId);
-    
-    this.changeListenerUnsubscribe = onSnapshot(controlDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const lastChange = data?.lastChange?.toMillis?.() || 0;
-        
-        // Verificar se a mudança é mais recente que nosso último sync
-        cacheService.getSyncMetadata(userId, 'transactions').then(meta => {
-          if (meta && lastChange > meta.lastSync) {
-            // Há mudanças! Sincronizar em background
-            this.syncInBackground(userId, true, false, true);
-          }
-        });
+
+    this.changeListenerUnsubscribe = onSnapshot(
+      controlDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as any;
+          const lastChange = data?.lastChange?.toMillis?.() || 0;
+
+          // Verificar se a mudança é mais recente que nosso último sync
+          cacheService
+            .getSyncMetadata(userId, 'transactions')
+            .then((meta) => {
+              if (meta && lastChange > meta.lastSync) {
+                // Há mudanças! Sincronizar em background
+                this.syncInBackground(userId, true, false, true);
+              }
+            })
+            .catch((err) =>
+              console.error('Erro ao ler metadata de sync:', err)
+            );
+        }
+      },
+      (error) => {
+        console.error('Erro no listener de mudanças:', error);
       }
-    }, (error) => {
-      console.error('Erro no listener de mudanças:', error);
-    });
+    );
   }
 
   private async updateChangeMarker(userId: string) {
     const controlDocRef = doc(db, 'user_sync', userId);
-    await setDoc(controlDocRef, {
-      lastChange: serverTimestamp(),
-      userId
-    }, { merge: true });
+    await setDoc(
+      controlDocRef,
+      {
+        lastChange: serverTimestamp(),
+        userId,
+      },
+      { merge: true }
+    );
   }
 
   // ============ CRUD OPERATIONS ============
 
   async saveTransaction(transaction: Transaction, userId: string): Promise<void> {
     // 1. Salvar no Firebase
-    await setDoc(doc(db, 'transactions', transaction.id), { ...transaction, userId });
-    
+    await setDoc(doc(db, 'transactions', transaction.id), {
+      ...transaction,
+      userId,
+    });
+
     // 2. Salvar no cache local
     await cacheService.saveTransaction(transaction, userId);
-    
+
     // 3. Atualizar marcador de mudança
     await this.updateChangeMarker(userId);
   }
 
-  async saveTransactionsBatch(transactions: Transaction[], userId: string): Promise<void> {
+  async saveTransactionsBatch(
+    transactions: Transaction[],
+    userId: string
+  ): Promise<void> {
     const batch = writeBatch(db);
-    
-    transactions.forEach(t => {
+
+    transactions.forEach((t) => {
       batch.set(doc(db, 'transactions', t.id), { ...t, userId });
     });
-    
+
     await batch.commit();
     await cacheService.saveTransactions(transactions, userId);
     await this.updateChangeMarker(userId);
@@ -331,29 +366,41 @@ class SyncService {
     await this.updateChangeMarker(userId);
   }
 
-  async deleteTransactionsBatch(ids: string[], userId: string): Promise<void> {
+  async deleteTransactionsBatch(
+    ids: string[],
+    userId: string
+  ): Promise<void> {
     const batch = writeBatch(db);
-    
-    ids.forEach(id => {
+
+    ids.forEach((id) => {
       batch.delete(doc(db, 'transactions', id));
     });
-    
+
     await batch.commit();
-    
+
     for (const id of ids) {
       await cacheService.deleteTransaction(id);
     }
-    
+
     await this.updateChangeMarker(userId);
   }
 
-  async saveRecurringTransaction(transaction: RecurringTransaction, userId: string): Promise<void> {
-    await setDoc(doc(db, 'recurring_transactions', transaction.id), { ...transaction, userId });
+  async saveRecurringTransaction(
+    transaction: RecurringTransaction,
+    userId: string
+  ): Promise<void> {
+    await setDoc(
+      doc(db, 'recurring_transactions', transaction.id),
+      { ...transaction, userId }
+    );
     await cacheService.saveRecurringTransaction(transaction, userId);
     await this.updateChangeMarker(userId);
   }
 
-  async deleteRecurringTransaction(id: string, userId: string): Promise<void> {
+  async deleteRecurringTransaction(
+    id: string,
+    userId: string
+  ): Promise<void> {
     await deleteDoc(doc(db, 'recurring_transactions', id));
     await cacheService.deleteRecurringTransaction(id);
     await this.updateChangeMarker(userId);
@@ -361,18 +408,21 @@ class SyncService {
 
   // ============ FORCE SYNC ============
 
-  async forceFullSync(userId: string): Promise<{
+  async forceFullSync(
+    userId: string
+  ): Promise<{
     transactions: Transaction[];
     accounts: Account[];
     recurringTransactions: RecurringTransaction[];
   }> {
     // Limpar cache e recarregar tudo
     await cacheService.clearAllUserData(userId);
-    
+
     const accounts = await this.syncAccounts(userId);
     const transactions = await this.syncTransactions(userId);
-    const recurringTransactions = await this.syncRecurringTransactions(userId);
-    
+    const recurringTransactions =
+      await this.syncRecurringTransactions(userId);
+
     return { transactions, accounts, recurringTransactions };
   }
 
@@ -397,7 +447,9 @@ class SyncService {
     return cacheService.getAccounts(userId);
   }
 
-  async getCachedRecurringTransactions(userId: string): Promise<RecurringTransaction[]> {
+  async getCachedRecurringTransactions(
+    userId: string
+  ): Promise<RecurringTransaction[]> {
     return cacheService.getRecurringTransactions(userId);
   }
 }
