@@ -1,6 +1,11 @@
 // === App.tsx SEM IA ===
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Transaction, Account, RecurringTransaction } from './types';
+import {
+  Transaction,
+  Account,
+  RecurringTransaction,
+  TransactionType,
+} from './types';
 import EntryForm from './EntryForm';
 import TransactionFilter from './TransactionFilter';
 import RecurringTransactionsModal from './RecurringTransactionsModal';
@@ -211,6 +216,31 @@ const App: React.FC = () => {
     );
     return sortOrder === 'asc' ? sorted : sorted.reverse();
   }, [filteredTransactions, sortOrder]);
+
+    const { totalEntradas, totalSaidas, margem } = useMemo(() => {
+    let entradas = 0;
+    let saidas = 0;
+
+    for (const t of filteredTransactions) {
+      const isEntrada =
+        t.type === TransactionType.ENTRADA || t.type === 'Entrada';
+      const isSaida =
+        t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+
+      if (isEntrada) {
+        entradas += t.amount;
+      } else if (isSaida) {
+        saidas += t.amount;
+      }
+    }
+
+    return {
+      totalEntradas: entradas,
+      totalSaidas: saidas,
+      margem: entradas - saidas,
+    };
+  }, [filteredTransactions]);
+
 
   const handleAddTransaction = () => {
     setTransactionToEdit(null);
@@ -745,11 +775,51 @@ const App: React.FC = () => {
             />
 
             {activeView === 'dashboard' && (
-              <CustomChartView
-                transactions={filteredTransactions}
-                accounts={accounts}
-              />
+              <div className="space-y-4 mt-4">
+                {/* Cards de resumo */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                      Entradas
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(totalEntradas)}
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                      Saídas
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-red-600 dark:text-red-400">
+                      {formatCurrency(totalSaidas)}
+                    </p>
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                      Margem
+                    </p>
+                    <p
+                      className={`mt-2 text-2xl font-bold ${
+                        margem >= 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {formatCurrency(margem)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Gráfico já existente */}
+                <CustomChartView
+                  transactions={filteredTransactions}
+                  accounts={accounts}
+                />
+              </div>
             )}
+
 
             {activeView === 'list' && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4">
