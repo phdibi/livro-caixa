@@ -469,9 +469,12 @@ const EntryForm: React.FC<EntryFormProps> = ({
     { value: 'NAO_DEDUTIVEL', label: 'Não dedutível / Geral' },
     { value: 'SAUDE', label: 'Saúde' },
     { value: 'EDUCACAO', label: 'Educação' },
-    { value: 'PREVIDENCIA', label: 'Previdência' },
-    { value: 'DEPENDENTES', label: 'Dependentes' },
-    { value: 'OUTROS', label: 'Outros gastos dedutíveis' },
+    { value: 'LIVRO_CAIXA', label: 'Livro Caixa' },
+    { value: 'CARNE_LEAO', label: 'Carnê Leão' },
+    { value: 'ATIVIDADE_RURAL', label: 'atividade rural' },
+    { value: 'BEM_DIREITO', label: 'Bens e direitos' },
+    { value: 'ALUGUEL', label: 'Aluguel' },
+    { value: 'OUTRA', label: 'Outros gastos dedutíveis' },
   ];
 
   const RECEIPT_STATUS_OPTIONS: { value: ReceiptStatus; label: string }[] = [

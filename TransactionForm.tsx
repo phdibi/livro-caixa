@@ -195,8 +195,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     { value: IrCategory.SAUDE, label: 'Saúde (dedutível)' },
     { value: IrCategory.EDUCACAO, label: 'Educação (dedutível)' },
     { value: IrCategory.LIVRO_CAIXA, label: 'Livro caixa (autônomo)' },
+    { value: IrCategory.CARNE_LEAO, label: 'Carnê Leão (autônomo)' },
     { value: IrCategory.ALUGUEL, label: 'Aluguel' },
     { value: IrCategory.BEM_DIREITO, label: 'Bens e direitos' },
+    { value: IrCategory.ATIVIDADE_RURAL, label: 'Atividade Rural' },
     { value: IrCategory.OUTRA, label: 'Outra categoria' },
   ];
 

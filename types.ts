@@ -28,6 +28,7 @@ export enum IrCategory {
   SAUDE = 'saude',
   EDUCACAO = 'educacao',
   LIVRO_CAIXA = 'livro-caixa',
+  CARNE_LEAO = 'carnê leão',
   ALUGUEL = 'aluguel',
   BEM_DIREITO = 'bem-direito',
   ATIVIDADE_RURAL = 'atividade-rural',
