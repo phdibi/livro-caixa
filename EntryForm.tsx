@@ -59,23 +59,13 @@ const EntryForm: React.FC<EntryFormProps> = ({
     amount: 0,
     payee: '',
     paymentMethod: 'pix',
-    // campos extras que você já usa no app
-    // (podem existir no seu types.ts real)
-    // @ts-ignore
     notes: '',
-    // @ts-ignore
     receiptStatus: ReceiptStatus.NONE,
-    // @ts-ignore
     irCategory: IrCategory.NAO_DEDUTIVEL,
-    // @ts-ignore
     irNotes: '',
-    // @ts-ignore
     year: new Date().getFullYear(),
-    // @ts-ignore
     month: new Date().getMonth() + 1,
-    // @ts-ignore
     createdAt: new Date().toISOString(),
-    // @ts-ignore
     updatedAt: new Date().toISOString(),
   });
 
@@ -111,7 +101,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
         ...transactionToEdit,
       };
 
-      // preencher parcela / recorrência
       if (transactionToEdit.seriesId) {
         const seriesTransactions = transactions.filter(
           (t) => t.seriesId === transactionToEdit.seriesId
@@ -130,7 +119,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
       setTransaction(merged);
 
-      // caso já existam itens salvos
       const anyItems = (transactionToEdit as any).items as
         | InvoiceItem[]
         | undefined;
@@ -161,7 +149,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
     }
   }, [isOpen, transactionToEdit, transactions, accounts]);
 
-  // Atualiza total = quantidade * valor unitário (modo simples)
+  // Atualiza total automático no modo simples
   useEffect(() => {
     if (isInvoiceMode) return;
 
@@ -287,10 +275,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
 
       const invoiceId = generateId();
 
-      // --------- CORREÇÃO PRINCIPAL ----------
-      // Se for à vista (1 parcela), usamos a data do lançamento.
-      // Se o campo "data da 1ª parcela" estiver vazio, também caímos
-      // na data do lançamento para evitar Invalid Date.
+      // Data base segura para parcelamento ou à vista
       const baseDateString =
         installmentsCount > 1
           ? firstInstallmentDate || transaction.date
@@ -307,7 +292,6 @@ const EntryForm: React.FC<EntryFormProps> = ({
         );
         return;
       }
-      // ---------------------------------------
 
       validItems.forEach((item) => {
         const totalParc = Math.max(1, installmentsCount);
@@ -335,7 +319,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
           }
           const parcelaAmount = cents / 100;
 
-          const parcela: Transaction = {
+          const parcelaBase: Transaction = {
             ...transaction,
             id: generateId(),
             date: d.toISOString().split('T')[0],
@@ -349,8 +333,13 @@ const EntryForm: React.FC<EntryFormProps> = ({
             unitValue: item.unitValue,
             amount: parcelaAmount,
             invoiceId,
-            seriesId,
           };
+
+          // Só adiciona seriesId quando de fato existir (parcelado > 1)
+          const parcela: Transaction =
+            totalParc > 1 && seriesId
+              ? { ...parcelaBase, seriesId }
+              : parcelaBase;
 
           onSave({
             transaction: parcela,
@@ -668,7 +657,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
             </>
           )}
 
-          {/* Dados de IR e comprovante – mantive igual ao seu */}
+          {/* Dados de IR e comprovante */}
           <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase">
               Imposto de Renda / Comprovante
@@ -741,22 +730,22 @@ const EntryForm: React.FC<EntryFormProps> = ({
                   className="mt-1 w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-xs"
                 >
                   <option value={IrCategory.NAO_DEDUTIVEL}>
-                    Não dedutível / Geral
+                    Não dedutível / geral
                   </option>
                   <option value={IrCategory.SAUDE}>Saúde (dedutível)</option>
                   <option value={IrCategory.EDUCACAO}>
                     Educação (dedutível)
                   </option>
                   <option value={IrCategory.LIVRO_CAIXA}>
-                    Livro Caixa (autônomo)
+                    Livro caixa (autônomo)
                   </option>
                   <option value={IrCategory.CARNE_LEAO}>
                     Carnê Leão (autônomo)
                   </option>
                   <option value={IrCategory.ALUGUEL}>Aluguel</option>
-                  <option value={IrCategory.BENS_DIREITOS}>Bens e direitos</option>
+                  <option value={IrCategory.BEM_DIREITO}>Bens e direitos</option>
                   <option value={IrCategory.ATIVIDADE_RURAL}>
-                    Atividade Rural (dedutível)
+                    Atividade Rural
                   </option>
                   <option value={IrCategory.OUTRA}>Outros</option>
                 </select>
@@ -778,7 +767,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
             </div>
           </div>
 
-          {/* Parcelamento (compartilhado com NF ou lançamento simples) */}
+          {/* Parcelamento */}
           <div className="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40 space-y-3">
             <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase">
               Parcelamento
