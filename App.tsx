@@ -203,7 +203,11 @@ const AppContent: React.FC = () => {
       setDataLoading(true);
       try {
         const { transactions: trans, accounts: acc, recurringTransactions: rec } =
-          await syncService.initialize(user.uid, reloadFromCache);
+          await syncService.initialize(user.uid, reloadFromCache, {
+            enableRealtimeListener: false,
+            transactionLimit: 150,
+            daysWindow: 90,
+          });
         setTransactions(trans);
         setAccounts(acc.sort((a, b) => a.number - b.number));
         setRecurringTransactions(rec);
@@ -246,6 +250,15 @@ const AppContent: React.FC = () => {
 
   useKeyboardShortcuts(shortcutHandlers, !isFormOpen && !isRecurringModalOpen);
 
+  useEffect(() => {
+    if (!user) return;
+    if (activeView === 'list') {
+      syncService.enableRealtimeUpdates();
+    } else {
+      syncService.disableRealtimeUpdates();
+    }
+  }, [activeView, user]);
+
   // Handlers MEMOIZADOS
   const handleSignOut = useCallback(async () => {
     syncService.cleanup();
@@ -258,7 +271,10 @@ const AppContent: React.FC = () => {
     setIsSyncing(true);
     try {
       const { transactions: trans, accounts: acc, recurringTransactions: rec } =
-        await syncService.forceFullSync(user.uid);
+        await syncService.forceFullSync(user.uid, {
+          transactionLimit: 200,
+          daysWindow: 120,
+        });
       setTransactions(trans);
       setAccounts(acc.sort((a, b) => a.number - b.number));
       setRecurringTransactions(rec);
