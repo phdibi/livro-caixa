@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Account } from './types';
 import { FilterIcon } from './Icons';
-import { parseBrazilianDate } from './validation';
 
 interface Filters {
   searchTerm: string;
@@ -25,10 +24,6 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
   onClear,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  
-  // Estados locais para inputs de data em formato brasileiro
-  const [startDateInput, setStartDateInput] = useState('');
-  const [endDateInput, setEndDateInput] = useState('');
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -38,28 +33,7 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
     [onFilterChange]
   );
 
-  // Handler especial para data com suporte a formato brasileiro
-  const handleDateInput = useCallback(
-    (name: 'startDate' | 'endDate', value: string) => {
-      // Tentar parse de data brasileira (dd/mm/yyyy)
-      const isoDate = parseBrazilianDate(value);
-      
-      if (isoDate) {
-        // Se conseguiu parsear, usar data ISO
-        onFilterChange((prev) => ({ ...prev, [name]: isoDate }));
-        if (name === 'startDate') setStartDateInput('');
-        else setEndDateInput('');
-      } else if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        // Se já está em formato ISO (do date picker)
-        onFilterChange((prev) => ({ ...prev, [name]: value }));
-      }
-    },
-    [onFilterChange]
-  );
-
   const handleClear = useCallback(() => {
-    setStartDateInput('');
-    setEndDateInput('');
     if (onClear) {
       onClear();
     } else {
@@ -105,15 +79,15 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
       </div>
 
       <div className={`${isExpanded ? 'block' : 'hidden'} md:block space-y-4`}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Busca com placeholder melhorado */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Busca */}
           <div className="relative">
             <input
               type="text"
               name="searchTerm"
               value={filters.searchTerm}
               onChange={handleInputChange}
-              placeholder="Buscar (histórico, fornecedor, conta)..."
+              placeholder="Buscar..."
               className="w-full p-2 pl-8 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
             />
             <svg
@@ -158,51 +132,28 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
             ))}
           </select>
 
-          {/* Range de datas com suporte a formato brasileiro */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                type="date"
-                name="startDate"
-                value={filters.startDate}
-                onChange={(e) => handleDateInput('startDate', e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
-                placeholder="dd/mm/aaaa"
-              />
-              {/* Input alternativo para formato brasileiro */}
-              <input
-                type="text"
-                value={startDateInput}
-                onChange={(e) => {
-                  setStartDateInput(e.target.value);
-                  handleDateInput('startDate', e.target.value);
-                }}
-                placeholder="dd/mm/aaaa"
-                className="absolute inset-0 w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm opacity-0 focus:opacity-100"
-                onBlur={() => setStartDateInput('')}
-              />
-            </div>
-            <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap text-center sm:text-left">
-              até
-            </span>
-            <div className="relative flex-1">
-              <input
-                type="date"
-                name="endDate"
-                value={filters.endDate}
-                onChange={(e) => handleDateInput('endDate', e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
-              />
-            </div>
-          </div>
+          {/* Data Início */}
+          <input
+            type="date"
+            name="startDate"
+            value={filters.startDate}
+            onChange={handleInputChange}
+            placeholder="Data início"
+            className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm [color-scheme:dark]"
+          />
+
+          {/* Data Fim */}
+          <input
+            type="date"
+            name="endDate"
+            value={filters.endDate}
+            onChange={handleInputChange}
+            placeholder="Data fim"
+            className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm [color-scheme:dark]"
+          />
         </div>
 
-        <div className="flex justify-between items-center">
-          {/* Dica sobre formato de data */}
-          <span className="text-[10px] text-gray-400 dark:text-gray-500">
-            Dica: digite datas no formato dd/mm/aaaa
-          </span>
-
+        <div className="flex justify-end">
           <button
             onClick={handleClear}
             disabled={activeFiltersCount === 0}

@@ -46,7 +46,7 @@ import { useDebounce } from './useDebounce';
 import { usePagination } from './usePagination';
 import { usePersistedFilters } from './usePersistedFilters';
 import { useKeyboardShortcuts, shortcutsList } from './useKeyboardShortcuts';
-import { validateTransaction, ValidationResult } from './validation';
+import { validateTransaction } from './validation';
 
 interface SavePayload {
   transaction: Transaction;
@@ -729,29 +729,39 @@ const AppContent: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-900/60">
                       <tr>
-                        <th className="px-4 py-2 text-left text-gray-500">Data</th>
-                        <th className="px-4 py-2 text-left text-gray-500">Tipo</th>
-                        <th className="px-4 py-2 text-left text-gray-500">Conta</th>
-                        <th className="px-4 py-2 text-left text-gray-500">Histórico</th>
-                        <th className="px-4 py-2 text-left text-gray-500">Fornecedor</th>
-                        <th className="px-4 py-2 text-right text-gray-500">Valor</th>
-                        <th className="px-4 py-2 text-right text-gray-500">Ações</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Data</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Tipo</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Conta</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Histórico</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Fornecedor</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Comprovante</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Categoria IR</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Valor</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {pagination.paginatedItems.map((t) => (
                         <tr key={t.id} className={`hover:bg-gray-50 dark:hover:bg-gray-900/40 ${getInvoiceRowClasses(t)}`}>
-                          <td className="px-4 py-2 whitespace-nowrap">{formatDisplayDate(t.date)}</td>
-                          <td className="px-4 py-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs ${isEntrada(t) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">{formatDisplayDate(t.date)}</td>
+                          <td className="px-3 py-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isEntrada(t) ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
                               {t.type}
                             </span>
                           </td>
-                          <td className="px-4 py-2">{t.accountNumber} - {t.accountName}</td>
-                          <td className="px-4 py-2">{t.description}</td>
-                          <td className="px-4 py-2 text-gray-600">{t.payee}</td>
-                          <td className="px-4 py-2 text-right font-semibold">{formatCurrency(t.amount)}</td>
-                          <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <td className="px-3 py-2 text-gray-800 dark:text-gray-200">{t.accountNumber} - {t.accountName}</td>
+                          <td className="px-3 py-2 text-gray-800 dark:text-gray-200">{t.description}</td>
+                          <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{t.payee}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${receiptStatusClasses(t.receiptStatus)}`}>
+                              {receiptStatusLabel(t.receiptStatus)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
+                            {irCategoryLabel(t.irCategory)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(t.amount)}</td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
                             <button onClick={() => handleEditTransaction(t)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 mr-1" title="Editar">
                               <EditIcon className="w-4 h-4" />
                             </button>
@@ -763,7 +773,7 @@ const AppContent: React.FC = () => {
                       ))}
                       {pagination.paginatedItems.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
+                          <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                             Nenhum lançamento encontrado.
                           </td>
                         </tr>
