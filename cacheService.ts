@@ -1,18 +1,18 @@
-// cacheService.ts
-// Implementação simples usando localStorage em vez de IndexedDB
-// para evitar erros de versão ("VersionError") e manter o código estável.
+// cacheService.ts - OTIMIZADO
+// Implementação com menos iterações e melhor performance
 
 import { Transaction, Account, RecurringTransaction } from './types';
 
 type CacheCollection = 'transactions' | 'accounts' | 'recurring_transactions';
 
 interface SyncMetadata {
-  lastSync: number; // timestamp em ms
+  lastSync: number;
 }
 
-class CacheService {
-  // --- helpers gerais ---
+// Cache em memória para evitar leituras repetidas do localStorage
+const memoryCache = new Map<string, any>();
 
+class CacheService {
   private hasStorage(): boolean {
     return typeof window !== 'undefined' && !!window.localStorage;
   }
@@ -25,20 +25,33 @@ class CacheService {
     return `sync_meta_${userId}_${collection}`;
   }
 
+  // OTIMIZADO: Leitura com cache em memória
   private readJSON<T>(key: string, fallback: T): T {
+    // Verificar cache em memória primeiro
+    if (memoryCache.has(key)) {
+      return memoryCache.get(key) as T;
+    }
+
     if (!this.hasStorage()) return fallback;
 
     try {
       const raw = window.localStorage.getItem(key);
       if (!raw) return fallback;
-      return JSON.parse(raw) as T;
+      const parsed = JSON.parse(raw) as T;
+      // Armazenar no cache em memória
+      memoryCache.set(key, parsed);
+      return parsed;
     } catch (err) {
       console.error('Erro ao ler do localStorage:', err);
       return fallback;
     }
   }
 
+  // OTIMIZADO: Escrita com atualização do cache em memória
   private writeJSON(key: string, value: any): void {
+    // Atualizar cache em memória
+    memoryCache.set(key, value);
+
     if (!this.hasStorage()) return;
 
     try {
@@ -49,6 +62,8 @@ class CacheService {
   }
 
   private removeKey(key: string): void {
+    memoryCache.delete(key);
+    
     if (!this.hasStorage()) return;
 
     try {
@@ -90,29 +105,44 @@ class CacheService {
     this.writeJSON(key, current);
   }
 
-  // ATENÇÃO: aqui não temos userId, então procuramos o id em todas
-  // as chaves de transações_* existentes. Na prática você só terá 1 usuário.
-  async deleteTransaction(id: string): Promise<void> {
+  // OTIMIZADO: Aceita userId para evitar varredura de todas as chaves
+  async deleteTransaction(id: string, userId?: string): Promise<void> {
+    if (userId) {
+      // Caminho otimizado quando userId é fornecido
+      const key = this.keyFor(userId, 'transactions');
+      const list = this.readJSON<Transaction[]>(key, []);
+      const filtered = list.filter((t) => t.id !== id);
+      this.writeJSON(key, filtered);
+      return;
+    }
+
+    // Fallback: busca em todas as chaves (evitar se possível)
     if (!this.hasStorage()) return;
 
     try {
-      const keysToUpdate: string[] = [];
-
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
         if (key && key.startsWith('transactions_')) {
-          keysToUpdate.push(key);
+          const list = this.readJSON<Transaction[]>(key, []);
+          const filtered = list.filter((t) => t.id !== id);
+          if (filtered.length !== list.length) {
+            this.writeJSON(key, filtered);
+            break; // Encontrou e deletou, pode parar
+          }
         }
       }
-
-      keysToUpdate.forEach((key) => {
-        const list = this.readJSON<Transaction[]>(key, []);
-        const filtered = list.filter((t) => t.id !== id);
-        this.writeJSON(key, filtered);
-      });
     } catch (err) {
       console.error('Erro ao excluir transação do cache:', err);
     }
+  }
+
+  // OTIMIZADO: Deletar múltiplas transações de uma vez
+  async deleteTransactions(ids: string[], userId: string): Promise<void> {
+    const key = this.keyFor(userId, 'transactions');
+    const current = this.readJSON<Transaction[]>(key, []);
+    const idSet = new Set(ids);
+    const filtered = current.filter((t) => !idSet.has(t.id));
+    this.writeJSON(key, filtered);
   }
 
   async clearTransactions(userId: string): Promise<void> {
@@ -125,7 +155,6 @@ class CacheService {
   async getAccounts(userId: string): Promise<Account[]> {
     const key = this.keyFor(userId, 'accounts');
     const accounts = this.readJSON<Account[]>(key, []);
-    // Garantir ordenação por número (usado diversas vezes no app)
     return accounts.sort((a, b) => a.number - b.number);
   }
 
@@ -171,29 +200,33 @@ class CacheService {
     this.writeJSON(key, current);
   }
 
-  async deleteRecurringTransaction(id: string): Promise<void> {
+  // OTIMIZADO: Aceita userId
+  async deleteRecurringTransaction(id: string, userId?: string): Promise<void> {
+    if (userId) {
+      const key = this.keyFor(userId, 'recurring_transactions');
+      const list = this.readJSON<RecurringTransaction[]>(key, []);
+      const filtered = list.filter((t) => t.id !== id);
+      this.writeJSON(key, filtered);
+      return;
+    }
+
+    // Fallback
     if (!this.hasStorage()) return;
 
     try {
-      const keysToUpdate: string[] = [];
-
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i);
         if (key && key.startsWith('recurring_transactions_')) {
-          keysToUpdate.push(key);
+          const list = this.readJSON<RecurringTransaction[]>(key, []);
+          const filtered = list.filter((t) => t.id !== id);
+          if (filtered.length !== list.length) {
+            this.writeJSON(key, filtered);
+            break;
+          }
         }
       }
-
-      keysToUpdate.forEach((key) => {
-        const list = this.readJSON<RecurringTransaction[]>(key, []);
-        const filtered = list.filter((t) => t.id !== id);
-        this.writeJSON(key, filtered);
-      });
     } catch (err) {
-      console.error(
-        'Erro ao excluir transação recorrente do cache:',
-        err
-      );
+      console.error('Erro ao excluir transação recorrente do cache:', err);
     }
   }
 
@@ -218,8 +251,7 @@ class CacheService {
     collection: CacheCollection
   ): Promise<SyncMetadata | null> {
     const key = this.syncKey(userId, collection);
-    const meta = this.readJSON<SyncMetadata | null>(key, null as any);
-    return meta ?? null;
+    return this.readJSON<SyncMetadata | null>(key, null);
   }
 
   async needsSync(
@@ -235,21 +267,37 @@ class CacheService {
     return ageMinutes >= maxAgeMinutes;
   }
 
-  // --- LIMPEZA GERAL ---
+  // --- LIMPEZA ---
 
   async clearAllUserData(userId: string): Promise<void> {
-    // limpa dados
     await this.clearTransactions(userId);
     await this.clearAccounts(userId);
     await this.clearRecurringTransactions(userId);
 
-    // limpa metadados
-    (['transactions', 'accounts', 'recurring_transactions'] as CacheCollection[]).forEach(
-      (collection) => {
-        const key = this.syncKey(userId, collection);
-        this.removeKey(key);
-      }
-    );
+    const collections: CacheCollection[] = [
+      'transactions',
+      'accounts',
+      'recurring_transactions',
+    ];
+
+    collections.forEach((collection) => {
+      const key = this.syncKey(userId, collection);
+      this.removeKey(key);
+    });
+  }
+
+  // NOVO: Limpar cache em memória (útil ao fazer logout)
+  clearMemoryCache(): void {
+    memoryCache.clear();
+  }
+
+  // NOVO: Pré-carregar dados no cache em memória
+  async preloadCache(userId: string): Promise<void> {
+    await Promise.all([
+      this.getTransactions(userId),
+      this.getAccounts(userId),
+      this.getRecurringTransactions(userId),
+    ]);
   }
 }
 

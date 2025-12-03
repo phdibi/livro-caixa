@@ -60,4 +60,14 @@ export interface RecurringTransaction {
   amount: number;
   payee: string;
   paymentMethod: string;
+  // Campos de IR para contas fixas
+  irCategory?: IrCategory;
+  requiresReceipt?: boolean;
 }
+
+// Helpers de tipo
+export const isEntrada = (t: Transaction): boolean =>
+  t.type === TransactionType.ENTRADA || t.type === 'Entrada';
+
+export const isSaida = (t: Transaction): boolean =>
+  t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
