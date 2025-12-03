@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   orderBy,
   limit,
+  startAfter,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Transaction, Account, RecurringTransaction } from './types';
@@ -96,12 +97,18 @@ class SyncService {
   private changeListenerUnsubscribe: Unsubscribe | null = null;
   private currentUserId: string | null = null;
   private onDataChange: (() => void) | null = null;
+  private enableRealtime = false;
+  private transactionSyncOptions: { limit: number; daysWindow: number } = {
+    limit: 150,
+    daysWindow: 90,
+  };
 
   // ============ INICIALIZAÇÃO ============
 
   async initialize(
     userId: string,
-    onDataChange: () => void
+    onDataChange: () => void,
+    options?: { enableRealtimeListener?: boolean; transactionLimit?: number; daysWindow?: number }
   ): Promise<{
     transactions: Transaction[];
     accounts: Account[];
@@ -109,6 +116,11 @@ class SyncService {
   }> {
     this.currentUserId = userId;
     this.onDataChange = onDataChange;
+    this.enableRealtime = options?.enableRealtimeListener ?? false;
+    this.transactionSyncOptions = {
+      limit: options?.transactionLimit ?? this.transactionSyncOptions.limit,
+      daysWindow: options?.daysWindow ?? this.transactionSyncOptions.daysWindow,
+    };
 
     // 1. Carregar dados do cache primeiro (instantâneo)
     let transactions = await cacheService.getTransactions(userId);
@@ -120,8 +132,8 @@ class SyncService {
     const needsTransSync = await cacheService.needsSync(
       userId,
       'transactions',
-      60
-    ); // 60 min
+      240
+    ); // 4h padrão
     const needsAccSync = await cacheService.needsSync(
       userId,
       'accounts',
@@ -130,7 +142,7 @@ class SyncService {
     const needsRecSync = await cacheService.needsSync(
       userId,
       'recurring_transactions',
-      60
+      1440
     );
 
     // 3. Se o cache estiver vazio, forçar sync mesmo que o "needsSync" diga que não
@@ -148,8 +160,10 @@ class SyncService {
       );
     }
 
-    // 4. Listener leve de mudanças
-    this.setupChangeListener(userId);
+    // 4. Listener leve de mudanças somente quando habilitado
+    if (this.enableRealtime) {
+      this.setupChangeListener(userId);
+    }
 
     return { transactions, accounts, recurringTransactions };
   }
@@ -165,7 +179,7 @@ class SyncService {
         await this.syncAccounts(userId);
       }
       if (syncTrans) {
-        await this.syncTransactions(userId);
+        await this.syncTransactions(userId, this.transactionSyncOptions);
       }
       if (syncRec) {
         await this.syncRecurringTransactions(userId);
@@ -228,11 +242,29 @@ class SyncService {
 
   // ============ SYNC TRANSACTIONS ============
 
-  private async syncTransactions(userId: string): Promise<Transaction[]> {
-    const q = query(
+  private async syncTransactions(
+    userId: string,
+    options: { limit?: number; startAfterDate?: string; daysWindow?: number } = {}
+  ): Promise<Transaction[]> {
+    const constraints = [
       collection(db, 'transactions'),
-      where('userId', '==', userId)
-    );
+      where('userId', '==', userId),
+      orderBy('date', 'desc'),
+    ];
+
+    if (options.startAfterDate) {
+      constraints.push(startAfter(options.startAfterDate));
+    }
+
+    const daysWindow = options.daysWindow ?? this.transactionSyncOptions.daysWindow;
+    if (daysWindow > 0) {
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - daysWindow);
+      const iso = fromDate.toISOString().slice(0, 10);
+      constraints.push(where('date', '>=', iso));
+    }
+
+    const q = query(...constraints, limit(options.limit ?? this.transactionSyncOptions.limit));
 
     const snapshot = await getDocs(q);
     const transactions = snapshot.docs.map(
@@ -240,8 +272,18 @@ class SyncService {
         ({ id: docSnap.id, ...docSnap.data() } as Transaction)
     );
 
-    await cacheService.clearTransactions(userId);
-    await cacheService.saveTransactions(transactions, userId);
+    if (!options.startAfterDate) {
+      await cacheService.clearTransactions(userId);
+    }
+
+    const currentCache = options.startAfterDate
+      ? await cacheService.getTransactions(userId)
+      : [];
+
+    await cacheService.saveTransactions(
+      options.startAfterDate ? [...currentCache, ...transactions] : transactions,
+      userId
+    );
     await cacheService.setSyncMetadata(userId, 'transactions');
 
     return transactions;
@@ -255,8 +297,8 @@ class SyncService {
     const q = query(
       collection(db, 'transactions'),
       where('userId', '==', userId),
-      where('date', '<', beforeDate),
       orderBy('date', 'desc'),
+      startAfter(beforeDate),
       limit(100)
     );
 
@@ -266,7 +308,8 @@ class SyncService {
         ({ id: docSnap.id, ...docSnap.data() } as Transaction)
     );
 
-    await cacheService.saveTransactions(transactions, userId);
+    const existing = await cacheService.getTransactions(userId);
+    await cacheService.saveTransactions([...existing, ...transactions], userId);
 
     return transactions;
   }
@@ -332,6 +375,20 @@ class SyncService {
     );
   }
 
+  enableRealtimeUpdates() {
+    if (!this.currentUserId || this.changeListenerUnsubscribe) return;
+    this.enableRealtime = true;
+    this.setupChangeListener(this.currentUserId);
+  }
+
+  disableRealtimeUpdates() {
+    this.enableRealtime = false;
+    if (this.changeListenerUnsubscribe) {
+      this.changeListenerUnsubscribe();
+      this.changeListenerUnsubscribe = null;
+    }
+  }
+
   private async updateChangeMarker(userId: string) {
     const controlDocRef = doc(db, 'user_sync', userId);
     await setDoc(
@@ -356,6 +413,7 @@ class SyncService {
     });
 
     await cacheService.saveTransaction(transaction, userId);
+    await cacheService.markLocalWrite(userId, 'transactions');
 
     await this.updateChangeMarker(userId);
   }
@@ -364,20 +422,27 @@ class SyncService {
     transactions: Transaction[],
     userId: string
   ): Promise<void> {
-    const batch = writeBatch(db);
+    const chunks: Transaction[][] = [];
+    for (let i = 0; i < transactions.length; i += 500) {
+      chunks.push(transactions.slice(i, i + 500));
+    }
 
-    transactions.forEach((t) => {
-      batch.set(doc(db, 'transactions', t.id), { ...t, userId });
-    });
-
-    await batch.commit();
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      chunk.forEach((t) => {
+        batch.set(doc(db, 'transactions', t.id), { ...t, userId });
+      });
+      await batch.commit();
+    }
     await cacheService.saveTransactions(transactions, userId);
+    await cacheService.markLocalWrite(userId, 'transactions');
     await this.updateChangeMarker(userId);
   }
 
   async deleteTransaction(id: string, userId: string): Promise<void> {
     await deleteDoc(doc(db, 'transactions', id));
     await cacheService.deleteTransaction(id);
+    await cacheService.markLocalWrite(userId, 'transactions');
     await this.updateChangeMarker(userId);
   }
 
@@ -385,17 +450,18 @@ class SyncService {
     ids: string[],
     userId: string
   ): Promise<void> {
-    const batch = writeBatch(db);
-
-    ids.forEach((id) => {
-      batch.delete(doc(db, 'transactions', id));
-    });
-
-    await batch.commit();
+    for (let i = 0; i < ids.length; i += 500) {
+      const batch = writeBatch(db);
+      ids.slice(i, i + 500).forEach((id) => {
+        batch.delete(doc(db, 'transactions', id));
+      });
+      await batch.commit();
+    }
 
     // OTIMIZADO: Deletar do cache em paralelo em vez de sequencial
     await Promise.all(ids.map((id) => cacheService.deleteTransaction(id)));
 
+    await cacheService.markLocalWrite(userId, 'transactions');
     await this.updateChangeMarker(userId);
   }
 
@@ -408,6 +474,7 @@ class SyncService {
       { ...transaction, userId }
     );
     await cacheService.saveRecurringTransaction(transaction, userId);
+    await cacheService.markLocalWrite(userId, 'recurring_transactions');
     await this.updateChangeMarker(userId);
   }
 
@@ -417,13 +484,15 @@ class SyncService {
   ): Promise<void> {
     await deleteDoc(doc(db, 'recurring_transactions', id));
     await cacheService.deleteRecurringTransaction(id);
+    await cacheService.markLocalWrite(userId, 'recurring_transactions');
     await this.updateChangeMarker(userId);
   }
 
   // ============ FORCE SYNC ============
 
   async forceFullSync(
-    userId: string
+    userId: string,
+    options?: { transactionLimit?: number; daysWindow?: number }
   ): Promise<{
     transactions: Transaction[];
     accounts: Account[];
@@ -432,7 +501,10 @@ class SyncService {
     // Em vez de limpar tudo de uma vez (que pode falhar),
     // usamos os próprios métodos de sync que já limpam o cache de cada tipo.
     const accounts = await this.syncAccounts(userId);
-    const transactions = await this.syncTransactions(userId);
+    const transactions = await this.syncTransactions(userId, {
+      limit: options?.transactionLimit,
+      daysWindow: options?.daysWindow,
+    });
     const recurringTransactions =
       await this.syncRecurringTransactions(userId);
 
@@ -442,10 +514,7 @@ class SyncService {
   // ============ CLEANUP ============
 
   cleanup() {
-    if (this.changeListenerUnsubscribe) {
-      this.changeListenerUnsubscribe();
-      this.changeListenerUnsubscribe = null;
-    }
+    this.disableRealtimeUpdates();
     this.currentUserId = null;
     this.onDataChange = null;
   }

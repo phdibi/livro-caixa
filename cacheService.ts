@@ -7,6 +7,8 @@ type CacheCollection = 'transactions' | 'accounts' | 'recurring_transactions';
 
 interface SyncMetadata {
   lastSync: number;
+  lastWrite?: number;
+  hash?: string;
 }
 
 // Cache em memória para evitar leituras repetidas do localStorage
@@ -239,10 +241,20 @@ class CacheService {
 
   async setSyncMetadata(
     userId: string,
-    collection: CacheCollection
+    collection: CacheCollection,
+    options?: { preserveLastWrite?: boolean; hash?: string | null }
   ): Promise<void> {
     const key = this.syncKey(userId, collection);
-    const meta: SyncMetadata = { lastSync: Date.now() };
+    const existing = (await this.getSyncMetadata(userId, collection)) || {
+      lastSync: 0,
+    };
+
+    const meta: SyncMetadata = {
+      lastSync: Date.now(),
+      hash: options?.hash ?? existing.hash,
+      lastWrite: options?.preserveLastWrite ? existing.lastWrite : undefined,
+    };
+
     this.writeJSON(key, meta);
   }
 
@@ -262,9 +274,31 @@ class CacheService {
     const meta = await this.getSyncMetadata(userId, collection);
     if (!meta) return true;
 
-    const ageMs = Date.now() - meta.lastSync;
-    const ageMinutes = ageMs / 60000;
-    return ageMinutes >= maxAgeMinutes;
+    const now = Date.now();
+    const ageMinutes = (now - meta.lastSync) / 60000;
+
+    const baseWindow = maxAgeMinutes;
+    const writeAwareWindow = meta.lastWrite ? Math.min(baseWindow, 60) : baseWindow;
+    const offlinePenalty =
+      typeof navigator !== 'undefined' && navigator.onLine === false && !meta.lastWrite
+        ? writeAwareWindow * 1.5
+        : writeAwareWindow;
+
+    return ageMinutes >= offlinePenalty;
+  }
+
+  async markLocalWrite(userId: string, collection: CacheCollection): Promise<void> {
+    const key = this.syncKey(userId, collection);
+    const meta = (await this.getSyncMetadata(userId, collection)) || {
+      lastSync: 0,
+    };
+
+    const updated: SyncMetadata = {
+      ...meta,
+      lastWrite: Date.now(),
+    };
+
+    this.writeJSON(key, updated);
   }
 
   // --- LIMPEZA ---
