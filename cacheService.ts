@@ -320,12 +320,12 @@ class CacheService {
     });
   }
 
-  // NOVO: Limpar cache em memória (útil ao fazer logout)
+  // Limpar cache em memória (útil ao fazer logout ou forçar sync)
   clearMemoryCache(): void {
     memoryCache.clear();
   }
 
-  // NOVO: Pré-carregar dados no cache em memória
+  // Pré-carregar dados no cache em memória
   async preloadCache(userId: string): Promise<void> {
     await Promise.all([
       this.getTransactions(userId),

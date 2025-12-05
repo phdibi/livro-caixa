@@ -42,17 +42,8 @@ export function validateTransaction(
     });
   } else {
     const transDate = parseLocalDate(transaction.date);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
 
-    // Data futura - warning
-    if (transDate > today) {
-      warnings.push({
-        field: 'date',
-        message: 'Data está no futuro. Confirma que está correto?',
-        severity: 'warning',
-      });
-    }
+    // REMOVIDO: Warning de data futura - usuário pode lançar contas futuras livremente
 
     // Data muito antiga - warning
     const twoYearsAgo = new Date();
