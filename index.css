@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  Styles are primarily handled by Tailwind CDN currently.
+  This file is here to prevent 404 errors and allow for future local CSS.
+*/

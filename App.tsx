@@ -26,6 +26,7 @@ const AppContent: React.FC = () => {
     dataLoading,
     isSyncing,
     filteredTransactions,
+    transactions,
     accounts,
     recurringTransactions,
     setRecurringTransactions,
