@@ -41,6 +41,8 @@ export interface Transaction {
   receiptStatus?: ReceiptStatus;
   irCategory?: IrCategory;
   irNotes?: string;
+  updatedAt?: number;
+  createdAt?: number;
 }
 
 export interface Account {
@@ -48,6 +50,8 @@ export interface Account {
   number: number;
   name: string;
   type: 'Receita' | 'Despesa';
+  updatedAt?: number;
+  createdAt?: number;
 }
 
 export interface RecurringTransaction {
@@ -63,6 +67,8 @@ export interface RecurringTransaction {
   // Campos de IR para contas fixas
   irCategory?: IrCategory;
   requiresReceipt?: boolean;
+  updatedAt?: number;
+  createdAt?: number;
 }
 
 // Helpers de tipo
@@ -71,3 +77,10 @@ export const isEntrada = (t: Transaction): boolean =>
 
 export const isSaida = (t: Transaction): boolean =>
   t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
+
+export interface SavePayload {
+  transaction: Transaction;
+  installmentsCount?: number;
+  firstInstallmentDate?: string;
+  updateScope?: 'single' | 'future';
+}
