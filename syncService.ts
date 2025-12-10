@@ -95,6 +95,7 @@ class SyncService {
   private changeListenerUnsubscribe: Unsubscribe | null = null;
   private currentUserId: string | null = null;
   private onDataChange: (() => void) | null = null;
+  private onSyncStatusChange: ((isSyncing: boolean) => void) | null = null;
   private enableRealtime = false;
   private lastSyncTimestamp = 0;
   private MIN_SYNC_INTERVAL = 5000; // 5 segundos throttle
@@ -104,6 +105,7 @@ class SyncService {
   async initialize(
     userId: string,
     onDataChange: () => void,
+    onSyncStatusChange: (isSyncing: boolean) => void,
     options?: SyncOptions
   ): Promise<{
     transactions: Transaction[];
@@ -112,6 +114,7 @@ class SyncService {
   }> {
     this.currentUserId = userId;
     this.onDataChange = onDataChange;
+    this.onSyncStatusChange = onSyncStatusChange;
     this.enableRealtime = options?.enableRealtimeListener ?? false;
 
     // 1. Carregar dados do cache primeiro (instantâneo)
@@ -167,6 +170,7 @@ class SyncService {
     syncRec: boolean,
     options?: SyncOptions
   ) {
+    if (this.onSyncStatusChange) this.onSyncStatusChange(true);
     try {
       if (syncAcc) {
         await this.syncAccounts(userId);
@@ -183,6 +187,8 @@ class SyncService {
       }
     } catch (error) {
       console.error('Erro na sincronização em background:', error);
+    } finally {
+      if (this.onSyncStatusChange) this.onSyncStatusChange(false);
     }
   }
 

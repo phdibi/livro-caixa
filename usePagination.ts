@@ -26,7 +26,7 @@ export function usePagination<T>(
   options: UsePaginationOptions = {}
 ): UsePaginationResult<T> {
   const { initialPageSize = 50, initialPage = 1 } = options;
-  
+
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
 
@@ -39,7 +39,7 @@ export function usePagination<T>(
     setCurrentPage(safePage);
   }
 
-  const startIndex = (safePage - 1) * pageSize;
+  const startIndex = isNaN((safePage - 1) * pageSize) ? 0 : (safePage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
 
   const paginatedItems = useMemo(() => {

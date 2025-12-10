@@ -34,6 +34,8 @@ export const useAppLogic = () => {
     const [authLoading, setAuthLoading] = useState(true);
     const [dataLoading, setDataLoading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
 
     // Dados
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -105,11 +107,16 @@ export const useAppLogic = () => {
                     transactions: trans,
                     accounts: acc,
                     recurringTransactions: rec,
-                } = await syncService.initialize(user.uid, reloadFromCache, {
-                    enableRealtimeListener: false,
-                    transactionLimit: 150,
-                    daysWindow: 90,
-                });
+                } = await syncService.initialize(
+                    user.uid,
+                    reloadFromCache,
+                    (active) => setIsBackgroundSyncing(active),
+                    {
+                        enableRealtimeListener: false,
+                        transactionLimit: 150,
+                        daysWindow: 90,
+                    }
+                );
                 setTransactions(trans);
                 setAccounts(acc.sort((a, b) => a.number - b.number));
                 setRecurringTransactions(rec);
@@ -278,6 +285,41 @@ export const useAppLogic = () => {
             setIsSyncing(false);
         }
     }, [user, isSyncing, toast]);
+
+    const handleLoadMore = useCallback(async () => {
+        if (!user || isLoadingMore) return;
+
+        // Encontrar a data da transação mais antiga carregada
+        // Assumindo que transactions pode não estar ordenada por data no array cru,
+        // mas syncService.loadOlderTransactions precisa de uma data de corte.
+        // Vamos achar a menor data do array atual.
+        const timestamps = transactions.map(t => new Date(t.date).getTime()).filter(t => !isNaN(t));
+        if (timestamps.length === 0) return;
+
+        const minTimestamp = Math.min(...timestamps);
+        const oldestDate = new Date(minTimestamp).toISOString().split('T')[0];
+
+        setIsLoadingMore(true);
+        try {
+            const olderTransactions = await syncService.loadOlderTransactions(user.uid, oldestDate);
+            if (olderTransactions.length > 0) {
+                setTransactions(prev => {
+                    // Merge evitando duplicatas (embora o service já faça, aqui é state local)
+                    const existingIds = new Set(prev.map(t => t.id));
+                    const uniqueNew = olderTransactions.filter(t => !existingIds.has(t.id));
+                    return [...prev, ...uniqueNew];
+                });
+                toast.success(`${olderTransactions.length} lançamentos antigos carregados.`);
+            } else {
+                toast.info('Não há mais lançamentos para carregar.');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar mais:', error);
+            toast.error('Erro ao carregar histórico.');
+        } finally {
+            setIsLoadingMore(false);
+        }
+    }, [user, transactions, isLoadingMore, toast]);
 
     const handleAddTransaction = useCallback(() => {
         setTransactionToEdit(null);
@@ -604,5 +646,8 @@ export const useAppLogic = () => {
         handleSaveRecurring,
         handleDeleteRecurring,
         handleRestore,
+        handleLoadMore,
+        isLoadingMore,
+        isBackgroundSyncing,
     };
 };

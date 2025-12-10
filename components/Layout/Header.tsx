@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenBackup: () => void;
   onForceSync: () => void;
   isSyncing: boolean;
+  isBackgroundSyncing?: boolean;
   onExport: () => void;
   activeView: 'dashboard' | 'cashflow' | 'irpf' | 'list';
   setActiveView: (view: 'dashboard' | 'cashflow' | 'irpf' | 'list') => void;
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBackup,
   onForceSync,
   isSyncing,
+  isBackgroundSyncing = false,
   onExport,
   activeView,
   setActiveView,
@@ -82,12 +84,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onForceSync}
             disabled={isSyncing}
-            className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${
-              isSyncing ? 'animate-spin' : ''
-            }`}
+            className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 ${isSyncing ? 'animate-spin' : ''
+              }`}
             title="Sincronizar (Ctrl+S)"
           >
-            <RefreshIcon className="w-6 h-6" />
+            <RefreshIcon className={`w-6 h-6 ${isBackgroundSyncing ? 'animate-spin text-green-500' : ''}`} />
           </button>
           <button
             onClick={onExport}
@@ -102,19 +103,18 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               key={view}
               onClick={() => setActiveView(view)}
-              className={`p-2 rounded-md ${
-                activeView === view
+              className={`p-2 rounded-md ${activeView === view
                   ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600'
                   : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
+                }`}
               title={
                 view === 'dashboard'
                   ? 'Dashboard'
                   : view === 'cashflow'
-                  ? 'Fluxo de Caixa'
-                  : view === 'irpf'
-                  ? 'IRPF'
-                  : 'Lista'
+                    ? 'Fluxo de Caixa'
+                    : view === 'irpf'
+                      ? 'IRPF'
+                      : 'Lista'
               }
             >
               {view === 'dashboard' && <ChartBarIcon className="w-6 h-6" />}

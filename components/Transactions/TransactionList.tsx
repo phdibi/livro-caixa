@@ -24,6 +24,8 @@ interface TransactionListProps {
     onEdit: (t: Transaction) => void;
     onDelete: (id: string) => void;
     invoiceGroups: Map<string, Transaction[]>;
+    onLoadMore?: () => void;
+    isLoadingMore?: boolean;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
@@ -34,6 +36,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onEdit,
     onDelete,
     invoiceGroups,
+    onLoadMore,
+    isLoadingMore = false,
 }) => {
     const getInvoiceRowClasses = useCallback(
         (t: Transaction): string => {
@@ -111,8 +115,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 <td className="px-3 py-2">
                                     <span
                                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${isEntrada(t)
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                                : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                            : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
                                             }`}
                                     >
                                         {t.type}
@@ -180,7 +184,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                 itemsPerPage={pagination.pageSize}
                 onItemsPerPageChange={pagination.setPageSize}
                 totalItems={pagination.totalItems}
+                hasNextPage={pagination.hasNextPage}
+                hasPrevPage={pagination.hasPrevPage}
+                startIndex={pagination.startIndex}
+                endIndex={pagination.endIndex}
             />
+
+            {onLoadMore && (
+                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-center">
+                    <button
+                        onClick={onLoadMore}
+                        disabled={isLoadingMore}
+                        className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline disabled:opacity-50"
+                    >
+                        {isLoadingMore ? 'Carregando...' : 'Carregar transações mais antigas'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

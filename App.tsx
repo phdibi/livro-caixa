@@ -62,6 +62,7 @@ const AppContent: React.FC = () => {
     handleDeleteRecurring,
     handleRestore,
     pagination,
+    isBackgroundSyncing,
   } = useAppLogic();
 
   if (authLoading) {
@@ -81,6 +82,7 @@ const AppContent: React.FC = () => {
         onOpenBackup={() => setIsBackupModalOpen(true)}
         onForceSync={handleForceSync}
         isSyncing={isSyncing}
+        isBackgroundSyncing={isBackgroundSyncing}
         onExport={() => setIsExportModalOpen(true)}
         activeView={activeView}
         setActiveView={setActiveView}
