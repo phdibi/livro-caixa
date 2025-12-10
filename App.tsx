@@ -62,6 +62,8 @@ const AppContent: React.FC = () => {
     handleDeleteRecurring,
     handleRestore,
     pagination,
+    handleLoadMore,
+    isLoadingMore,
     isBackgroundSyncing,
   } = useAppLogic();
 
