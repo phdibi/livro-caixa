@@ -133,6 +133,8 @@ const AppContent: React.FC = () => {
                 onEdit={handleEditTransaction}
                 onDelete={handleDeleteTransaction}
                 invoiceGroups={invoiceGroups}
+                onLoadMore={handleLoadMore}
+                isLoadingMore={isLoadingMore}
               />
             )}
 

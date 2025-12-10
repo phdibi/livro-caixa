@@ -513,6 +513,7 @@ class SyncService {
     transactions: Transaction[];
     accounts: Account[];
     recurringTransactions: RecurringTransaction[];
+    throttled?: boolean;
   }> {
     // Throttle: impedir sync se for muito recente (< 5s)
     const now = Date.now();
@@ -523,6 +524,7 @@ class SyncService {
         transactions: await cacheService.getTransactions(userId),
         accounts: await cacheService.getAccounts(userId),
         recurringTransactions: await cacheService.getRecurringTransactions(userId),
+        throttled: true,
       };
     }
     this.lastSyncTimestamp = now;

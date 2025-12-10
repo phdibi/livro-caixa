@@ -269,6 +269,7 @@ export const useAppLogic = () => {
                 transactions: trans,
                 accounts: acc,
                 recurringTransactions: rec,
+                throttled,
             } = await syncService.forceFullSync(user.uid, {
                 transactionLimit: 200,
                 daysWindow: 120,
@@ -277,7 +278,12 @@ export const useAppLogic = () => {
             setTransactions(trans);
             setAccounts(acc.sort((a, b) => a.number - b.number));
             setRecurringTransactions(rec);
-            toast.success('Dados sincronizados!');
+
+            if (throttled) {
+                toast.info('Sincronização muito frequente. Aguarde uns instantes.');
+            } else {
+                toast.success('Dados sincronizados!');
+            }
         } catch (error: any) {
             console.error('Erro ao sincronizar:', error);
             toast.error('Erro ao sincronizar. Tente novamente.');
