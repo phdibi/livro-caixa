@@ -1,18 +1,15 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Transaction, Account, TransactionType } from './types';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { Transaction, Account, isEntrada, isSaida } from './types';
 import { 
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
+import { formatCurrency } from './utils/formatters';
 
 interface CustomChartViewProps {
     transactions: Transaction[];
     accounts: Account[];
 }
-
-const formatCurrency = (value: number) => {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-};
 
 const formatCompact = (value: number) => {
     if (value >= 1000000) return `R$ ${(value / 1000000).toFixed(1)}M`;
@@ -35,14 +32,6 @@ const COLORS = [
     '#a855f7', // purple
     '#d946ef', // fuchsia
 ];
-
-const isEntrada = (t: Transaction): boolean => {
-    return t.type === TransactionType.ENTRADA || t.type === 'Entrada';
-};
-
-const isSaida = (t: Transaction): boolean => {
-    return t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
-};
 
 const MultiSelectDropdown: React.FC<{
     accounts: Account[];

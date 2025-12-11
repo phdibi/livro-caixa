@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Transaction,
   TransactionType,
   Account,
   IrCategory,
   ReceiptStatus,
+  SavePayload,
 } from './types';
-
-interface SavePayload {
-  transaction: Transaction;
-  installmentsCount?: number;
-  firstInstallmentDate?: string;
-  updateScope?: 'single' | 'future';
-}
+import { generateId } from './utils/common';
+import { parseLocalDate, formatDateString, addMonths } from './utils/formatters';
 
 interface EntryFormProps {
   isOpen: boolean;
@@ -33,34 +29,8 @@ type InvoiceItem = {
   amount: number;
 };
 
-const generateId = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return Date.now().toString(36) + Math.random().toString(36).substring(2);
-};
-
-// CORREÇÃO: Função para criar data sem problemas de timezone
-// Recebe string YYYY-MM-DD e retorna Date no horário local
-const parseLocalDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0); // Meio-dia para evitar problemas de DST
-};
-
-// CORREÇÃO: Função para formatar data como YYYY-MM-DD sem timezone issues
-const formatDateString = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-// Função para adicionar meses a uma data
-const addMonths = (date: Date, months: number): Date => {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-};
+// Função auxiliar movida para fora do componente
+const getTodayString = (): string => formatDateString(new Date());
 
 const EntryForm: React.FC<EntryFormProps> = ({
   isOpen,
@@ -70,15 +40,17 @@ const EntryForm: React.FC<EntryFormProps> = ({
   accounts,
   transactions,
 }) => {
-  const getTodayString = (): string => {
-    return formatDateString(new Date());
-  };
+  // OTIMIZADO: useMemo para evitar recriação em cada render
+  const defaultAccount = useMemo(() => ({
+    number: accounts.length > 0 ? accounts[0].number : 0,
+    name: accounts.length > 0 ? accounts[0].name : '',
+  }), [accounts]);
 
-  const getInitialState = (): Omit<Transaction, 'id'> => ({
+  const getInitialState = useCallback((): Omit<Transaction, 'id'> => ({
     date: getTodayString(),
     type: TransactionType.SAIDA,
-    accountNumber: accounts.length > 0 ? accounts[0].number : 0,
-    accountName: accounts.length > 0 ? accounts[0].name : '',
+    accountNumber: defaultAccount.number,
+    accountName: defaultAccount.name,
     description: '',
     quantity: 1,
     unitValue: 0,
@@ -89,17 +61,17 @@ const EntryForm: React.FC<EntryFormProps> = ({
     receiptStatus: ReceiptStatus.NONE,
     irCategory: IrCategory.NAO_DEDUTIVEL,
     irNotes: '',
-  });
+  }), [defaultAccount]);
 
-  const createEmptyItem = (): InvoiceItem => ({
+  const createEmptyItem = useCallback((): InvoiceItem => ({
     id: generateId(),
-    accountNumber: accounts.length > 0 ? accounts[0].number : 0,
-    accountName: accounts.length > 0 ? accounts[0].name : '',
+    accountNumber: defaultAccount.number,
+    accountName: defaultAccount.name,
     description: '',
     quantity: 1,
     unitValue: 0,
     amount: 0,
-  });
+  }), [defaultAccount]);
 
   const [transaction, setTransaction] = useState(getInitialState());
   const [installmentsCount, setInstallmentsCount] = useState(1);

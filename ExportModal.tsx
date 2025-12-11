@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import ExcelJS from 'exceljs';
 import html2canvas from 'html2canvas';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Transaction, TransactionType, IrCategory, ReceiptStatus } from './types';
+import { Transaction, IrCategory, ReceiptStatus, isEntrada, isSaida } from './types';
+import { formatCurrency } from './utils/formatters';
+import { receiptStatusLabel, irCategoryLabel } from './utils/labels';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -11,9 +13,6 @@ interface ExportModalProps {
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943', '#19D4FF'];
-
-const formatCurrency = (value: number) =>
-  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const CustomPieChart = ({
   data,
@@ -56,8 +55,8 @@ const CustomPieChart = ({
   </div>
 );
 
-// Helpers de texto para o Excel
-const formatReceiptStatusLabel = (status?: ReceiptStatus): string => {
+// Helpers específicos para Excel (formato diferente dos labels do app)
+const formatReceiptStatusForExcel = (status?: ReceiptStatus): string => {
   switch (status) {
     case ReceiptStatus.HAS_BUT_NOT_ATTACHED:
       return 'Tenho comprovante';
@@ -73,8 +72,7 @@ const formatReceiptStatusLabel = (status?: ReceiptStatus): string => {
   }
 };
 
-// CORRIGIDO: Removidos enums que não existem no types.ts
-const formatIrCategoryLabel = (cat?: IrCategory): string => {
+const formatIrCategoryForExcel = (cat?: IrCategory): string => {
   switch (cat) {
     case IrCategory.SAUDE:
       return 'Saúde';
@@ -131,14 +129,10 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
     const incomeMap = new Map<string, number>();
 
     transactions.forEach((t) => {
-      // CORRIGIDO: Comparação robusta para tipo
-      const isEntrada = t.type === TransactionType.ENTRADA || t.type === 'Entrada';
-      const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
-
-      if (isSaida) {
+      if (isSaida(t)) {
         const current = expenseMap.get(t.accountName) || 0;
         expenseMap.set(t.accountName, current + t.amount);
-      } else if (isEntrada) {
+      } else if (isEntrada(t)) {
         const current = incomeMap.get(t.accountName) || 0;
         incomeMap.set(t.accountName, current + t.amount);
       }
@@ -171,8 +165,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
     });
 
     const total = filtered.reduce((sum, t) => {
-      const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
-      const signedValue = isSaida ? -t.amount : t.amount;
+      const signedValue = isSaida(t) ? -t.amount : t.amount;
       return sum + signedValue;
     }, 0);
 
@@ -207,16 +200,15 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
       );
 
       sortedTransactions.forEach((t) => {
-        const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
         transactionsSheet.addRow({
           date: t.date,
-          type: isSaida ? 'Saída' : 'Entrada',
+          type: isSaida(t) ? 'Saída' : 'Entrada',
           accountName: t.accountName,
           description: t.description,
-          amount: isSaida ? -t.amount : t.amount,
+          amount: isSaida(t) ? -t.amount : t.amount,
           payee: t.payee,
-          receiptStatus: formatReceiptStatusLabel(t.receiptStatus),
-          irCategory: formatIrCategoryLabel(t.irCategory),
+          receiptStatus: formatReceiptStatusForExcel(t.receiptStatus),
+          irCategory: formatIrCategoryForExcel(t.irCategory),
           irNotes: t.irNotes || '',
         });
       });
@@ -254,19 +246,18 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, transactions
       let irRunningTotal = 0;
 
       irTransactions.forEach((t) => {
-        const isSaida = t.type === TransactionType.SAIDA || t.type === 'Saida' || t.type === 'Saída';
-        const signedValue = isSaida ? -t.amount : t.amount;
+        const signedValue = isSaida(t) ? -t.amount : t.amount;
         irRunningTotal += signedValue;
 
         irSheet.addRow({
           date: t.date,
-          type: isSaida ? 'Saída' : 'Entrada',
+          type: isSaida(t) ? 'Saída' : 'Entrada',
           accountName: t.accountName,
           description: t.description,
           amount: signedValue,
           payee: t.payee,
-          receiptStatus: formatReceiptStatusLabel(t.receiptStatus),
-          irCategory: formatIrCategoryLabel(t.irCategory),
+          receiptStatus: formatReceiptStatusForExcel(t.receiptStatus),
+          irCategory: formatIrCategoryForExcel(t.irCategory),
           irNotes: t.irNotes || '',
         });
       });

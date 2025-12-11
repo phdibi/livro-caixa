@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RecurringTransaction, TransactionType, Account, IrCategory } from './types';
+import { generateId } from './utils/common';
 
 interface RecurringTransactionFormProps {
     onSave: (transaction: RecurringTransaction) => void;
@@ -8,24 +9,23 @@ interface RecurringTransactionFormProps {
     transactionToEdit?: RecurringTransaction | null;
 }
 
-const generateId = () => {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-    }
-    return Date.now().toString(36) + Math.random().toString(36).substring(2);
-};
-
 const RecurringTransactionForm: React.FC<RecurringTransactionFormProps> = ({
     onSave,
     onClose,
     accounts,
     transactionToEdit,
 }) => {
-    const getInitialState = (): Omit<RecurringTransaction, 'id'> => ({
+    // OTIMIZADO: useMemo para valores default
+    const defaultAccount = useMemo(() => ({
+        number: accounts.length > 0 ? accounts[0].number : 0,
+        name: accounts.length > 0 ? accounts[0].name : '',
+    }), [accounts]);
+
+    const getInitialState = useCallback((): Omit<RecurringTransaction, 'id'> => ({
         dayOfMonth: 1,
         type: TransactionType.SAIDA,
-        accountNumber: accounts.length > 0 ? accounts[0].number : 0,
-        accountName: accounts.length > 0 ? accounts[0].name : '',
+        accountNumber: defaultAccount.number,
+        accountName: defaultAccount.name,
         description: '',
         amount: 0,
         payee: '',
@@ -33,7 +33,7 @@ const RecurringTransactionForm: React.FC<RecurringTransactionFormProps> = ({
         // campos novos para IR
         irCategory: IrCategory.NAO_DEDUTIVEL,
         requiresReceipt: false,
-    });
+    }), [defaultAccount]);
 
     const [transaction, setTransaction] = useState<Omit<RecurringTransaction, 'id'>>(getInitialState());
 
