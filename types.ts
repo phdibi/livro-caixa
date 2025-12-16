@@ -41,6 +41,7 @@ export interface Transaction {
   receiptStatus?: ReceiptStatus;
   irCategory?: IrCategory;
   irNotes?: string;
+  isContaTiti?: boolean;
   updatedAt?: number;
   createdAt?: number;
 }
@@ -67,6 +68,7 @@ export interface RecurringTransaction {
   // Campos de IR para contas fixas
   irCategory?: IrCategory;
   requiresReceipt?: boolean;
+  isContaTiti?: boolean;
   updatedAt?: number;
   createdAt?: number;
 }

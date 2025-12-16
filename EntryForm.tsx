@@ -61,6 +61,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
     receiptStatus: ReceiptStatus.NONE,
     irCategory: IrCategory.NAO_DEDUTIVEL,
     irNotes: '',
+    isContaTiti: false,
   }), [defaultAccount]);
 
   const createEmptyItem = useCallback((): InvoiceItem => ({
@@ -162,6 +163,13 @@ const EntryForm: React.FC<EntryFormProps> = ({
     >
   ) => {
     const { name, value } = e.target;
+    // @ts-ignore
+    const checked = e.target.checked;
+
+    if (name === 'isContaTiti') {
+      setTransaction((prev) => ({ ...prev, isContaTiti: checked }));
+      return;
+    }
 
     if (name === 'accountNumber') {
       const num = parseInt(value, 10);
@@ -395,6 +403,19 @@ const EntryForm: React.FC<EntryFormProps> = ({
               className="mr-2"
             />
             Modo nota fiscal
+          </label>
+        </div>
+
+        <div className="mb-4">
+          <label className="flex items-center text-sm font-medium text-amber-600 dark:text-amber-400">
+            <input
+              type="checkbox"
+              name="isContaTiti"
+              checked={!!transaction.isContaTiti}
+              onChange={handleChange}
+              className="mr-2 rounded border-gray-300 text-amber-600 shadow-sm focus:border-amber-300 focus:ring focus:ring-amber-200 focus:ring-opacity-50"
+            />
+            Conta Titi (Ocultar do fluxo/gráficos)
           </label>
         </div>
 

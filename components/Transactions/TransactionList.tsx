@@ -127,6 +127,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 </td>
                                 <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
                                     {t.description}
+                                    {t.isContaTiti && (
+                                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                            Conta Titi
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
                                     {t.payee}
