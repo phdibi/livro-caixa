@@ -506,6 +506,29 @@ class SyncService {
 
   // ============ FORCE SYNC ============
 
+  /**
+   * Fetches ALL transactions from Firebase and completely replaces the cache.
+   * This ensures deletions and all updates are properly synchronized.
+   */
+  private async syncTransactionsFull(userId: string): Promise<Transaction[]> {
+    const q = query(
+      collection(db, 'transactions'),
+      where('userId', '==', userId)
+    );
+
+    const snapshot = await getDocs(q);
+    const transactions = snapshot.docs.map(
+      (docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Transaction)
+    );
+
+    // REPLACE - complete cache replacement, not merge
+    await cacheService.clearTransactions(userId);
+    await cacheService.saveTransactions(transactions, userId);
+    await cacheService.setSyncMetadata(userId, 'transactions');
+
+    return transactions;
+  }
+
   async forceFullSync(
     userId: string,
     options?: SyncOptions
@@ -529,9 +552,9 @@ class SyncService {
     }
     this.lastSyncTimestamp = now;
 
-    // Sincronizar tudo do Firebase com opções
+    // Sincronizar tudo do Firebase - FULL replacement, not merge
     const accounts = await this.syncAccounts(userId);
-    const transactions = await this.syncTransactions(userId, options);
+    const transactions = await this.syncTransactionsFull(userId);
     const recurringTransactions = await this.syncRecurringTransactions(userId);
 
     return { transactions, accounts, recurringTransactions };
