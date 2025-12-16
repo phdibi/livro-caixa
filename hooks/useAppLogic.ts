@@ -172,7 +172,14 @@ export const useAppLogic = () => {
         filters.endDate,
     ]);
 
-    // Ordenação
+    // Transações para gráficos/totais (exclui Conta Titi por padrão)
+    const chartTransactions = useMemo(() => {
+        return filteredTransactions.filter(t =>
+            !t.isContaTiti || filters.includeContaTiti
+        );
+    }, [filteredTransactions, filters.includeContaTiti]);
+
+    // Ordenação (mantemos todos na lista)
     const sortedTransactions = useMemo(() => {
         const sorted = [...filteredTransactions].sort((a, b) =>
             a.date.localeCompare(b.date)
@@ -183,11 +190,11 @@ export const useAppLogic = () => {
     // Paginação
     const pagination = usePagination(sortedTransactions, { initialPageSize: 50 });
 
-    // Totais
+    // Totais (usando chartTransactions)
     const { totalEntradas, totalSaidas, margem } = useMemo(() => {
         let entradas = 0,
             saidas = 0;
-        for (const t of filteredTransactions) {
+        for (const t of chartTransactions) {
             if (isEntrada(t)) entradas += t.amount;
             else if (isSaida(t)) saidas += t.amount;
         }
@@ -196,7 +203,7 @@ export const useAppLogic = () => {
             totalSaidas: saidas,
             margem: entradas - saidas,
         };
-    }, [filteredTransactions]);
+    }, [chartTransactions]);
 
     // IRPF resumo
     const irpfResumo = useMemo(() => {
@@ -655,5 +662,6 @@ export const useAppLogic = () => {
         handleLoadMore,
         isLoadingMore,
         isBackgroundSyncing,
+        chartTransactions,
     };
 };

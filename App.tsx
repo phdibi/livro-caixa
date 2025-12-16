@@ -65,6 +65,7 @@ const AppContent: React.FC = () => {
     handleLoadMore,
     isLoadingMore,
     isBackgroundSyncing,
+    chartTransactions,
   } = useAppLogic();
 
   if (authLoading) {
@@ -110,7 +111,7 @@ const AppContent: React.FC = () => {
                 totalEntradas={totalEntradas}
                 totalSaidas={totalSaidas}
                 margem={margem}
-                filteredTransactions={filteredTransactions}
+                filteredTransactions={chartTransactions}
                 accounts={accounts}
               />
             )}
@@ -119,7 +120,7 @@ const AppContent: React.FC = () => {
             {activeView === 'cashflow' && (
               <div className="mt-4">
                 <Suspense fallback={<LoadingSpinner />}>
-                  <CashFlowReport transactions={filteredTransactions} />
+                  <CashFlowReport transactions={chartTransactions} />
                 </Suspense>
               </div>
             )}

@@ -6,6 +6,7 @@ interface Filters {
   accountId: string;
   startDate: string;
   endDate: string;
+  includeContaTiti?: boolean;
 }
 
 const STORAGE_KEY = 'livro_caixa_filters';
@@ -16,6 +17,7 @@ const defaultFilters: Filters = {
   accountId: '',
   startDate: '',
   endDate: '',
+  includeContaTiti: false,
 };
 
 export function usePersistedFilters(userId: string) {

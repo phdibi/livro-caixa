@@ -8,6 +8,7 @@ interface Filters {
   accountId: string;
   startDate: string;
   endDate: string;
+  includeContaTiti?: boolean;
 }
 
 interface TransactionFilterProps {
@@ -54,6 +55,7 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
     filters.accountId,
     filters.startDate,
     filters.endDate,
+    filters.includeContaTiti,
   ].filter(Boolean).length;
 
   return (
@@ -151,6 +153,25 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
             placeholder="Data fim"
             className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm [color-scheme:dark]"
           />
+        </div>
+
+        {/* Conta Titi Checkbox */}
+        <div className="flex items-center mt-2">
+          <label className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              name="includeContaTiti"
+              checked={!!filters.includeContaTiti}
+              onChange={(e) =>
+                onFilterChange((prev) => ({
+                  ...prev,
+                  includeContaTiti: e.target.checked,
+                }))
+              }
+              className="mr-2 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+            />
+            Incluir Conta Titi (Gráficos/Totais)
+          </label>
         </div>
 
         <div className="flex justify-end">
