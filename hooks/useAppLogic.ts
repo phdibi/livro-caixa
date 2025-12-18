@@ -422,14 +422,28 @@ export const useAppLogic = () => {
                             firstInstallmentDate || transaction.date
                         );
                         const seriesId = generateId();
+
+                        // Calcular valor das parcelas
+                        const totalCents = Math.round(transaction.amount * 100);
+                        const basePerInstallment = Math.floor(totalCents / installmentsCount);
+                        const remainder = totalCents - (basePerInstallment * installmentsCount);
+
                         for (let i = 0; i < installmentsCount; i++) {
                             const installmentDate = addMonths(startDate, i);
+
+                            let cents = basePerInstallment;
+                            if (i === installmentsCount - 1) {
+                                cents += remainder;
+                            }
+                            const installmentAmount = cents / 100;
+
                             transactionsToSave.push({
                                 ...transaction,
                                 id: generateId(),
                                 seriesId,
                                 date: formatDateString(installmentDate),
                                 description: `${transaction.description} (${i + 1}/${installmentsCount})`,
+                                amount: installmentAmount,
                             });
                         }
                     } else {
