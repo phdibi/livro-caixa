@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Accounts Collection
+    match /accounts/{docId} {
+      allow read: if isUser(resource.data.userId);
+      allow create: if isUser(request.resource.data.userId);
+      allow update: if isUser(resource.data.userId) && isUser(request.resource.data.userId);
+      allow delete: if isUser(resource.data.userId);
+    }
+
+    // Transactions Collection
+    match /transactions/{docId} {
+      allow read: if isUser(resource.data.userId);
+      allow create: if isUser(request.resource.data.userId);
+      allow update: if isUser(resource.data.userId) && isUser(request.resource.data.userId);
+      allow delete: if isUser(resource.data.userId);
+    }
+
+    // Recurring Transactions Collection
+    match /recurring_transactions/{docId} {
+      allow read: if isUser(resource.data.userId);
+      allow create: if isUser(request.resource.data.userId);
+      allow update: if isUser(resource.data.userId) && isUser(request.resource.data.userId);
+      allow delete: if isUser(resource.data.userId);
+    }
+
+    // User Sync Metadata (Document ID matches userId)
+    match /user_sync/{userId} {
+      allow read, write: if isUser(userId);
+    }
+  }
+}
