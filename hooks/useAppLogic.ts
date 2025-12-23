@@ -344,39 +344,43 @@ export const useAppLogic = () => {
         setIsFormOpen(true);
     }, []);
 
-    const handleDeleteTransaction = useCallback(
-        async (id: string) => {
-            if (!user) return;
-            const transactionToDelete = transactions.find((t) => t.id === id);
-            if (!transactionToDelete) return;
+    const handleDeleteTransactions = useCallback(
+        async (ids: string[], deleteSeries: boolean = false) => {
+            if (!user || ids.length === 0) return;
 
             try {
-                if (transactionToDelete.seriesId) {
-                    const confirmMessage = `Este é um lançamento parcelado.\n\nOK = excluir série inteira\nCancelar = excluir apenas esta parcela`;
-                    if (window.confirm(confirmMessage)) {
-                        const seriesTransactions = transactions.filter(
-                            (t) => t.seriesId === transactionToDelete.seriesId
+                let idsToDelete = [...ids];
+
+                if (deleteSeries) {
+                    // Encontra todos os seriesIds envolvidos nos itens selecionados
+                    const seriesIds = new Set<string>();
+                    ids.forEach((id) => {
+                        const t = transactions.find((tr) => tr.id === id);
+                        if (t?.seriesId) seriesIds.add(t.seriesId);
+                    });
+
+                    // Se houver séries envolvidas, busca todos os itens dessas séries
+                    if (seriesIds.size > 0) {
+                        const relatedTransactions = transactions.filter(
+                            (t) => t.seriesId && seriesIds.has(t.seriesId)
                         );
-                        const idsToDelete = seriesTransactions.map((t) => t.id);
-                        await syncService.deleteTransactionsBatch(idsToDelete, user.uid);
-                        setTransactions((prev) =>
-                            prev.filter((t) => t.seriesId !== transactionToDelete.seriesId)
-                        );
-                        toast.success('Série excluída!');
-                    } else {
-                        await syncService.deleteTransaction(id, user.uid);
-                        setTransactions((prev) => prev.filter((t) => t.id !== id));
-                        toast.success('Parcela excluída!');
-                    }
-                } else {
-                    if (
-                        window.confirm(`Excluir "${transactionToDelete.description}"?`)
-                    ) {
-                        await syncService.deleteTransaction(id, user.uid);
-                        setTransactions((prev) => prev.filter((t) => t.id !== id));
-                        toast.success('Lançamento excluído!');
+                        const relatedIds = relatedTransactions.map((t) => t.id);
+
+                        // Merge com ids originais (Set para evitar duplicatas)
+                        idsToDelete = Array.from(new Set([...idsToDelete, ...relatedIds]));
                     }
                 }
+
+                await syncService.deleteTransactionsBatch(idsToDelete, user.uid);
+
+                // Atualiza estado local
+                setTransactions((prev) => prev.filter((t) => !idsToDelete.includes(t.id)));
+
+                toast.success(
+                    idsToDelete.length > 1
+                        ? `${idsToDelete.length} lançamentos excluídos!`
+                        : 'Lançamento excluído!'
+                );
             } catch (error) {
                 console.error('Erro ao excluir:', error);
                 toast.error('Erro ao excluir.');
@@ -667,7 +671,7 @@ export const useAppLogic = () => {
         handleForceSync,
         handleAddTransaction,
         handleEditTransaction,
-        handleDeleteTransaction,
+        handleDeleteTransactions,
         handleSaveTransaction,
         handleGenerateRecurring,
         handleSaveRecurring,

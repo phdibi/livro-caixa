@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Transaction, ReceiptStatus, isEntrada } from '../../types';
 import { EditIcon, TrashIcon } from '../../Icons';
 import {
@@ -10,10 +10,8 @@ import {
     receiptStatusClasses,
     irCategoryLabel,
 } from '../../utils/labels';
-import Pagination from '../../Pagination'; // Assuming Pagination is in root or components? Check App.tsx
-
-// Pagination is imported as: import Pagination from './Pagination'; in App.tsx
-// So it is in root. ../../Pagination.
+import Pagination from '../../Pagination';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface TransactionListProps {
     transactions: Transaction[]; // Paginated items
@@ -22,7 +20,7 @@ interface TransactionListProps {
     sortOrder: 'asc' | 'desc';
     setSortOrder: (order: 'asc' | 'desc') => void;
     onEdit: (t: Transaction) => void;
-    onDelete: (id: string) => void;
+    onDelete: (ids: string[], deleteSeries: boolean) => Promise<void>;
     invoiceGroups: Map<string, Transaction[]>;
     onLoadMore?: () => void;
     isLoadingMore?: boolean;
@@ -39,6 +37,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onLoadMore,
     isLoadingMore = false,
 }) => {
+    // Estado de seleção
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [itemsToDelete, setItemsToDelete] = useState<Transaction[]>([]);
+
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedIds(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === transactions.length && transactions.length > 0) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(transactions.map((t) => t.id)));
+        }
+    };
+
     const getInvoiceRowClasses = useCallback(
         (t: Transaction): string => {
             if (!t.invoiceId) return '';
@@ -49,29 +67,84 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         [invoiceGroups]
     );
 
+    // Handlers para exclusão
+    const handleDeleteClick = (transaction: Transaction) => {
+        setItemsToDelete([transaction]);
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleBatchDeleteClick = () => {
+        const toDelete = transactions.filter((t) => selectedIds.has(t.id));
+        setItemsToDelete(toDelete);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async (deleteSeries: boolean) => {
+        const ids = itemsToDelete.map((t) => t.id);
+        await onDelete(ids, deleteSeries);
+        setIsDeleteModalOpen(false);
+        setSelectedIds(new Set());
+        setItemsToDelete([]);
+    };
+
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4">
-            <div className="flex justify-between items-center px-4 py-3 border-b dark:border-gray-700">
-                <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold">Lançamentos</h2>
-                    <span className="text-xs text-gray-500">
-                        ({pagination.totalItems})
-                    </span>
-                </div>
-                <button
-                    onClick={() =>
-                        setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-                    }
-                    className="text-xs text-gray-500"
-                >
-                    Data ({sortOrder === 'asc' ? '↑' : '↓'})
-                </button>
+            <DeleteConfirmationModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                transactionsToDelete={itemsToDelete}
+                totalTransactions={transactions.length}
+            />
+
+            <div className="flex justify-between items-center px-4 py-3 border-b dark:border-gray-700 min-h-[60px]">
+                {selectedIds.size > 0 ? (
+                    <div className="flex items-center gap-4 w-full animate-fadeIn bg-indigo-50 dark:bg-indigo-900/20 -mx-4 px-4 py-2">
+                        <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                            {selectedIds.size} selecionado(s)
+                        </span>
+                        <button
+                            onClick={handleBatchDeleteClick}
+                            className="ml-auto text-sm bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded-md font-medium transition-colors"
+                        >
+                            Excluir Selecionados
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-lg font-semibold">Lançamentos</h2>
+                            <span className="text-xs text-gray-500">
+                                ({pagination.totalItems})
+                            </span>
+                        </div>
+                        <button
+                            onClick={() =>
+                                setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                            }
+                            className="text-xs text-gray-500"
+                        >
+                            Data ({sortOrder === 'asc' ? '↑' : '↓'})
+                        </button>
+                    </>
+                )}
             </div>
 
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-900/60">
                         <tr>
+                            <th className="px-3 py-2 w-10">
+                                <input
+                                    type="checkbox"
+                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    checked={
+                                        transactions.length > 0 &&
+                                        selectedIds.size === transactions.length
+                                    }
+                                    onChange={toggleSelectAll}
+                                />
+                            </th>
                             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
                                 Data
                             </th>
@@ -107,8 +180,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                 key={t.id}
                                 className={`hover:bg-gray-50 dark:hover:bg-gray-900/40 ${getInvoiceRowClasses(
                                     t
-                                )}`}
+                                )} ${selectedIds.has(t.id) ? 'bg-indigo-50 dark:bg-indigo-900/10' : ''}`}
                             >
+                                <td className="px-3 py-2">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        checked={selectedIds.has(t.id)}
+                                        onChange={() => toggleSelection(t.id)}
+                                    />
+                                </td>
                                 <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
                                     {formatDisplayDate(t.date)}
                                 </td>
@@ -160,7 +241,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                         <EditIcon className="w-4 h-4" />
                                     </button>
                                     <button
-                                        onClick={() => onDelete(t.id)}
+                                        onClick={() => handleDeleteClick(t)}
                                         className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/60"
                                         title="Excluir"
                                     >
@@ -172,7 +253,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                         {transactions.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={9}
+                                    colSpan={10}
                                     className="px-4 py-6 text-center text-gray-500"
                                 >
                                     Nenhum lançamento encontrado.

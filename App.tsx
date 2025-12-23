@@ -55,7 +55,7 @@ const AppContent: React.FC = () => {
     handleForceSync,
     handleAddTransaction,
     handleEditTransaction,
-    handleDeleteTransaction,
+    handleDeleteTransactions,
     handleSaveTransaction,
     handleGenerateRecurring,
     handleSaveRecurring,
@@ -134,7 +134,7 @@ const AppContent: React.FC = () => {
                 sortOrder={sortOrder}
                 setSortOrder={setSortOrder}
                 onEdit={handleEditTransaction}
-                onDelete={handleDeleteTransaction}
+                onDelete={handleDeleteTransactions}
                 invoiceGroups={invoiceGroups}
                 onLoadMore={handleLoadMore}
                 isLoadingMore={isLoadingMore}
