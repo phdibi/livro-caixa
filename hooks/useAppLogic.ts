@@ -504,21 +504,25 @@ export const useAppLogic = () => {
 
             const newTransactions: Transaction[] = [];
             recurringTransactions.forEach((rt) => {
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const day = Math.min(rt.dayOfMonth, daysInMonth);
+
                 const transactionDate = new Date(
                     year,
                     month - 1,
-                    rt.dayOfMonth,
+                    day,
                     12,
                     0,
                     0
                 );
-                if (transactionDate.getMonth() === month - 1) {
-                    const signature = `${rt.dayOfMonth}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
-                    if (!existingSignatures.has(signature)) {
-                        newTransactions.push({
-                            id: generateId(),
-                            date: formatDateString(transactionDate),
-                            type: rt.type,
+
+                // Use clamped day for signature check to match what is saved
+                const signature = `${day}-${rt.accountNumber}-${rt.amount}-${rt.description}`;
+                if (!existingSignatures.has(signature)) {
+                    newTransactions.push({
+                        id: generateId(),
+                        date: formatDateString(transactionDate),
+                        type: rt.type,
                             accountNumber: rt.accountNumber,
                             accountName: rt.accountName,
                             description: rt.description,
