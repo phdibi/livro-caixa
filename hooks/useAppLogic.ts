@@ -531,7 +531,6 @@ export const useAppLogic = () => {
                             paymentMethod: rt.paymentMethod,
                             irCategory: rt.irCategory,
                         });
-                    }
                 }
             });
 
