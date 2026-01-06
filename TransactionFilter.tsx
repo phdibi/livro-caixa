@@ -9,6 +9,7 @@ interface Filters {
   startDate: string;
   endDate: string;
   includeContaTiti?: boolean;
+  pendingReceipt?: boolean;
 }
 
 interface TransactionFilterProps {
@@ -56,6 +57,7 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
     filters.startDate,
     filters.endDate,
     filters.includeContaTiti,
+    filters.pendingReceipt,
   ].filter(Boolean).length;
 
   return (
@@ -155,8 +157,8 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
           />
         </div>
 
-        {/* Conta Titi Checkbox */}
-        <div className="flex items-center mt-2">
+        {/* Checkboxes Row */}
+        <div className="flex flex-wrap gap-4 mt-2">
           <label className="flex items-center text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
@@ -171,6 +173,22 @@ const TransactionFilter: React.FC<TransactionFilterProps> = ({
               className="mr-2 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
             />
             Incluir Conta Titi (Gráficos/Totais)
+          </label>
+
+          <label className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              name="pendingReceipt"
+              checked={!!filters.pendingReceipt}
+              onChange={(e) =>
+                onFilterChange((prev) => ({
+                  ...prev,
+                  pendingReceipt: e.target.checked,
+                }))
+              }
+              className="mr-2 rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+            />
+            Pendente Comprovante (Tenho, mas não anexei)
           </label>
         </div>
 

@@ -161,7 +161,10 @@ export const useAppLogic = () => {
                 (!filters.startDate || t.date >= filters.startDate) &&
                 (!filters.endDate || t.date <= filters.endDate);
 
-            return matchSearch && matchType && matchAccount && matchDate;
+            const matchPendingReceipt = !filters.pendingReceipt ||
+                t.receiptStatus === ReceiptStatus.HAS_BUT_NOT_ATTACHED;
+
+            return matchSearch && matchType && matchAccount && matchDate && matchPendingReceipt;
         });
     }, [
         transactions,
@@ -170,6 +173,7 @@ export const useAppLogic = () => {
         filters.accountId,
         filters.startDate,
         filters.endDate,
+        filters.pendingReceipt,
     ]);
 
     // Transações para gráficos/totais (exclui Conta Titi por padrão)
@@ -531,7 +535,6 @@ export const useAppLogic = () => {
                             paymentMethod: rt.paymentMethod,
                             irCategory: rt.irCategory,
                         });
-                    }
                 }
             });
 

@@ -7,6 +7,7 @@ interface Filters {
   startDate: string;
   endDate: string;
   includeContaTiti?: boolean;
+  pendingReceipt?: boolean;
 }
 
 const STORAGE_KEY = 'livro_caixa_filters';
@@ -18,6 +19,7 @@ const defaultFilters: Filters = {
   startDate: '',
   endDate: '',
   includeContaTiti: false,
+  pendingReceipt: false,
 };
 
 export function usePersistedFilters(userId: string) {
