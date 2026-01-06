@@ -1,5 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Transaction, ReceiptStatus, isEntrada } from '../../types';
+import { PaginationState } from '../../types/pagination';
 import { EditIcon, TrashIcon } from '../../Icons';
 import {
     formatCurrency,
@@ -16,7 +18,7 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 interface TransactionListProps {
     transactions: Transaction[]; // Paginated items
     allTransactionsCount: number; // For empty state msg or stats?
-    pagination: any; // The return of usePagination
+    pagination: PaginationState<Transaction>;
     sortOrder: 'asc' | 'desc';
     setSortOrder: (order: 'asc' | 'desc') => void;
     onEdit: (t: Transaction) => void;
@@ -25,6 +27,10 @@ interface TransactionListProps {
     onLoadMore?: () => void;
     isLoadingMore?: boolean;
 }
+
+// Row height constant for virtualizer
+const ROW_HEIGHT = 48;
+const VIRTUALIZATION_THRESHOLD = 100; // Only virtualize when more than 100 items
 
 export const TransactionList: React.FC<TransactionListProps> = ({
     transactions,
@@ -37,10 +43,23 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     onLoadMore,
     isLoadingMore = false,
 }) => {
+    // Ref for virtual scroll container
+    const parentRef = useRef<HTMLDivElement>(null);
+
     // Estado de seleção
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemsToDelete, setItemsToDelete] = useState<Transaction[]>([]);
+
+    // Virtualizer setup - only active for large lists
+    const shouldVirtualize = transactions.length > VIRTUALIZATION_THRESHOLD;
+
+    const virtualizer = useVirtualizer({
+        count: transactions.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => ROW_HEIGHT,
+        overscan: 10, // Render 10 extra items above/below visible area
+    });
 
     const toggleSelection = (id: string) => {
         const newSet = new Set(selectedIds);
@@ -87,6 +106,84 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         setItemsToDelete([]);
     };
 
+    // Render a single transaction row
+    const renderRow = (t: Transaction, style?: React.CSSProperties) => (
+        <tr
+            key={t.id}
+            style={style}
+            className={`hover:bg-gray-50 dark:hover:bg-gray-900/40 ${getInvoiceRowClasses(
+                t
+            )} ${selectedIds.has(t.id) ? 'bg-indigo-50 dark:bg-indigo-900/10' : ''}`}
+        >
+            <td className="px-3 py-2">
+                <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    checked={selectedIds.has(t.id)}
+                    onChange={() => toggleSelection(t.id)}
+                />
+            </td>
+            <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
+                {formatDisplayDate(t.date)}
+            </td>
+            <td className="px-3 py-2">
+                <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${isEntrada(t)
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                        }`}
+                >
+                    {t.type}
+                </span>
+            </td>
+            <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
+                {t.accountNumber} - {t.accountName}
+            </td>
+            <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
+                {t.description}
+                {t.isContaTiti && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        Conta Titi
+                    </span>
+                )}
+            </td>
+            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
+                {t.payee}
+            </td>
+            <td className="px-3 py-2">
+                <span
+                    className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${receiptStatusClasses(
+                        t.receiptStatus
+                    )}`}
+                >
+                    {receiptStatusLabel(t.receiptStatus)}
+                </span>
+            </td>
+            <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
+                {irCategoryLabel(t.irCategory)}
+            </td>
+            <td className="px-3 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">
+                {formatCurrency(t.amount)}
+            </td>
+            <td className="px-3 py-2 text-right whitespace-nowrap">
+                <button
+                    onClick={() => onEdit(t)}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 mr-1"
+                    title="Editar"
+                >
+                    <EditIcon className="w-4 h-4" />
+                </button>
+                <button
+                    onClick={() => handleDeleteClick(t)}
+                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/60"
+                    title="Excluir"
+                >
+                    <TrashIcon className="w-4 h-4" />
+                </button>
+            </td>
+        </tr>
+    );
+
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mt-4">
             <DeleteConfirmationModal
@@ -117,6 +214,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <span className="text-xs text-gray-500">
                                 ({pagination.totalItems})
                             </span>
+                            {shouldVirtualize && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded">
+                                    Virtual
+                                </span>
+                            )}
                         </div>
                         <button
                             onClick={() =>
@@ -131,137 +233,133 @@ export const TransactionList: React.FC<TransactionListProps> = ({
             </div>
 
             <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-900/60">
-                        <tr>
-                            <th className="px-3 py-2 w-10">
-                                <input
-                                    type="checkbox"
-                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                    checked={
-                                        transactions.length > 0 &&
-                                        selectedIds.size === transactions.length
-                                    }
-                                    onChange={toggleSelectAll}
-                                />
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Data
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Tipo
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Conta
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Histórico
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Fornecedor
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Comprovante
-                            </th>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Categoria IR
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Valor
-                            </th>
-                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
-                                Ações
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {transactions.map((t) => (
-                            <tr
-                                key={t.id}
-                                className={`hover:bg-gray-50 dark:hover:bg-gray-900/40 ${getInvoiceRowClasses(
-                                    t
-                                )} ${selectedIds.has(t.id) ? 'bg-indigo-50 dark:bg-indigo-900/10' : ''}`}
+                {shouldVirtualize ? (
+                    // Virtualized table for large lists
+                    <div
+                        ref={parentRef}
+                        className="max-h-[600px] overflow-auto scrollbar-thin"
+                    >
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-900/60 sticky top-0 z-10">
+                                <tr>
+                                    <th className="px-3 py-2 w-10">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                            checked={
+                                                transactions.length > 0 &&
+                                                selectedIds.size === transactions.length
+                                            }
+                                            onChange={toggleSelectAll}
+                                        />
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Data
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Tipo
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Conta
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Histórico
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Fornecedor
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Comprovante
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Categoria IR
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Valor
+                                    </th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        Ações
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody
+                                className="divide-y divide-gray-200 dark:divide-gray-700 relative"
+                                style={{ height: `${virtualizer.getTotalSize()}px` }}
                             >
-                                <td className="px-3 py-2">
+                                {virtualizer.getVirtualItems().map((virtualRow) => {
+                                    const t = transactions[virtualRow.index];
+                                    return renderRow(t, {
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: `${virtualRow.size}px`,
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    });
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    // Standard table for smaller lists
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-900/60">
+                            <tr>
+                                <th className="px-3 py-2 w-10">
                                     <input
                                         type="checkbox"
                                         className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                        checked={selectedIds.has(t.id)}
-                                        onChange={() => toggleSelection(t.id)}
+                                        checked={
+                                            transactions.length > 0 &&
+                                            selectedIds.size === transactions.length
+                                        }
+                                        onChange={toggleSelectAll}
                                     />
-                                </td>
-                                <td className="px-3 py-2 whitespace-nowrap text-gray-800 dark:text-gray-200">
-                                    {formatDisplayDate(t.date)}
-                                </td>
-                                <td className="px-3 py-2">
-                                    <span
-                                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${isEntrada(t)
-                                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                            : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                                            }`}
-                                    >
-                                        {t.type}
-                                    </span>
-                                </td>
-                                <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
-                                    {t.accountNumber} - {t.accountName}
-                                </td>
-                                <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
-                                    {t.description}
-                                    {t.isContaTiti && (
-                                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                                            Conta Titi
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
-                                    {t.payee}
-                                </td>
-                                <td className="px-3 py-2">
-                                    <span
-                                        className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${receiptStatusClasses(
-                                            t.receiptStatus
-                                        )}`}
-                                    >
-                                        {receiptStatusLabel(t.receiptStatus)}
-                                    </span>
-                                </td>
-                                <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
-                                    {irCategoryLabel(t.irCategory)}
-                                </td>
-                                <td className="px-3 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">
-                                    {formatCurrency(t.amount)}
-                                </td>
-                                <td className="px-3 py-2 text-right whitespace-nowrap">
-                                    <button
-                                        onClick={() => onEdit(t)}
-                                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 mr-1"
-                                        title="Editar"
-                                    >
-                                        <EditIcon className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDeleteClick(t)}
-                                        className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/60"
-                                        title="Excluir"
-                                    >
-                                        <TrashIcon className="w-4 h-4" />
-                                    </button>
-                                </td>
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Data
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Tipo
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Conta
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Histórico
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Fornecedor
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Comprovante
+                                </th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Categoria IR
+                                </th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Valor
+                                </th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    Ações
+                                </th>
                             </tr>
-                        ))}
-                        {transactions.length === 0 && (
-                            <tr>
-                                <td
-                                    colSpan={10}
-                                    className="px-4 py-6 text-center text-gray-500"
-                                >
-                                    Nenhum lançamento encontrado.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {transactions.map((t) => renderRow(t))}
+                            {transactions.length === 0 && (
+                                <tr>
+                                    <td
+                                        colSpan={10}
+                                        className="px-4 py-6 text-center text-gray-500"
+                                    >
+                                        Nenhum lançamento encontrado.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                )}
             </div>
             <Pagination
                 currentPage={pagination.currentPage}

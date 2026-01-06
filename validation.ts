@@ -1,4 +1,5 @@
 import { Transaction, TransactionType } from './types';
+import { parseLocalDate } from './utils/formatters';
 
 export interface ValidationError {
   field: string;
@@ -11,19 +12,6 @@ export interface ValidationResult {
   errors: ValidationError[];
   warnings: ValidationError[];
 }
-
-// Funções auxiliares de data
-const parseLocalDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0);
-};
-
-const formatDateString = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 // Validação de transação
 export function validateTransaction(

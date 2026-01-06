@@ -2,22 +2,23 @@
 import React, { lazy, Suspense } from 'react';
 import { ToastProvider } from './Toast';
 import { useAppLogic } from './hooks/useAppLogic';
+import ErrorBoundary from './components/ErrorBoundary';
 
-// Components
+// Core Components (always loaded)
 import Login from './Login';
 import TransactionFilter from './TransactionFilter';
-import EntryForm from './EntryForm';
-import RecurringTransactionsModal from './RecurringTransactionsModal';
-import ExportModal from './ExportModal';
-import BackupRestore from './BackupRestore';
 import { Header } from './components/Layout/Header';
 import { DashboardView } from './components/Dashboard/DashboardView';
 import { TransactionList } from './components/Transactions/TransactionList';
-import { IrpfView } from './components/Reports/IrpfView';
 import { LoadingSpinner } from './components/UI/LoadingSpinner';
 
-// Lazy load
+// Lazy loaded components (loaded on demand)
 const CashFlowReport = lazy(() => import('./CashFlowReport'));
+const IrpfView = lazy(() => import('./components/Reports/IrpfView').then(m => ({ default: m.IrpfView })));
+const EntryForm = lazy(() => import('./EntryForm'));
+const RecurringTransactionsModal = lazy(() => import('./RecurringTransactionsModal'));
+const ExportModal = lazy(() => import('./ExportModal'));
+const BackupRestore = lazy(() => import('./BackupRestore'));
 
 const AppContent: React.FC = () => {
   const {
@@ -142,61 +143,76 @@ const AppContent: React.FC = () => {
             )}
 
             {/* IRPF */}
-            {activeView === 'irpf' && <IrpfView irpfResumo={irpfResumo} />}
+            {activeView === 'irpf' && (
+              <Suspense fallback={<LoadingSpinner />}>
+                <IrpfView irpfResumo={irpfResumo} />
+              </Suspense>
+            )}
           </>
         )}
       </main>
 
-      {/* Modais */}
-      <EntryForm
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        onSave={handleSaveTransaction}
-        transactionToEdit={transactionToEdit}
-        accounts={accounts}
-        transactions={transactions}
-      // App passed 'transactions' which was the full list.
-      // I should verify entry form prop name. 'transactions'.
-      // useAppLogic returns 'transactions'. Let's use that.
-      // But in the hook I returned 'transactions' (state).
-      // Let's pass 'transactions'.
-      />
+      {/* Modais - Lazy loaded com Suspense */}
+      <Suspense fallback={null}>
+        {isFormOpen && (
+          <EntryForm
+            isOpen={isFormOpen}
+            onClose={() => setIsFormOpen(false)}
+            onSave={handleSaveTransaction}
+            transactionToEdit={transactionToEdit}
+            accounts={accounts}
+            transactions={transactions}
+          />
+        )}
+      </Suspense>
 
-      {/* Wait, EntryForm prop passed in App.tsx was 'transactions' (state). */}
+      <Suspense fallback={null}>
+        {isRecurringModalOpen && (
+          <RecurringTransactionsModal
+            isOpen={isRecurringModalOpen}
+            onClose={() => setIsRecurringModalOpen(false)}
+            accounts={accounts}
+            recurringTransactions={recurringTransactions}
+            setRecurringTransactions={setRecurringTransactions}
+            onGenerate={handleGenerateRecurring}
+            onSaveItem={handleSaveRecurring}
+            onDeleteItem={handleDeleteRecurring}
+          />
+        )}
+      </Suspense>
 
-      <RecurringTransactionsModal
-        isOpen={isRecurringModalOpen}
-        onClose={() => setIsRecurringModalOpen(false)}
-        accounts={accounts}
-        recurringTransactions={recurringTransactions}
-        setRecurringTransactions={setRecurringTransactions}
-        onGenerate={handleGenerateRecurring}
-        onSaveItem={handleSaveRecurring}
-        onDeleteItem={handleDeleteRecurring}
-      />
+      <Suspense fallback={null}>
+        {isExportModalOpen && (
+          <ExportModal
+            isOpen={isExportModalOpen}
+            onClose={() => setIsExportModalOpen(false)}
+            transactions={filteredTransactions}
+          />
+        )}
+      </Suspense>
 
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        transactions={filteredTransactions}
-      />
-
-      <BackupRestore
-        isOpen={isBackupModalOpen}
-        onClose={() => setIsBackupModalOpen(false)}
-        transactions={transactions} // Full list
-        accounts={accounts}
-        recurringTransactions={recurringTransactions}
-        onRestore={handleRestore}
-      />
+      <Suspense fallback={null}>
+        {isBackupModalOpen && (
+          <BackupRestore
+            isOpen={isBackupModalOpen}
+            onClose={() => setIsBackupModalOpen(false)}
+            transactions={transactions}
+            accounts={accounts}
+            recurringTransactions={recurringTransactions}
+            onRestore={handleRestore}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
 
 const App: React.FC = () => (
-  <ToastProvider>
-    <AppContent />
-  </ToastProvider>
+  <ErrorBoundary>
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
+  </ErrorBoundary>
 );
 
 export default App;

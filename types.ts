@@ -44,6 +44,10 @@ export interface Transaction {
   isContaTiti?: boolean;
   updatedAt?: number;
   createdAt?: number;
+  // Campos para comprovantes anexados
+  receiptUrl?: string; // URL do arquivo no Firebase Storage
+  receiptFilename?: string; // Nome original do arquivo
+  receiptUploadedAt?: number; // Timestamp do upload
 }
 
 export interface Account {

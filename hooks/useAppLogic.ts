@@ -17,6 +17,7 @@ import { useDebounce } from '../useDebounce';
 import { usePagination } from '../usePagination';
 import { usePersistedFilters } from '../usePersistedFilters';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
+import { useFuzzySearch } from './useFuzzySearch';
 import { validateTransaction } from '../validation';
 import { useToast } from '../Toast';
 import {
@@ -142,18 +143,19 @@ export const useAppLogic = () => {
         }
     }, [activeView, user]);
 
-    // Filtros OTIMIZADOS
+    // Fuzzy search hook
+    const { search: fuzzySearch } = useFuzzySearch(transactions);
+
+    // Filtros OTIMIZADOS com busca fuzzy
     const filteredTransactions = useMemo(() => {
-        return transactions.filter((t) => {
-            const searchTermLower = debouncedSearchTerm.toLowerCase();
+        // Primeiro, aplicar busca fuzzy se houver termo de busca
+        let baseTransactions = transactions;
+        if (debouncedSearchTerm && debouncedSearchTerm.trim().length >= 2) {
+            baseTransactions = fuzzySearch(debouncedSearchTerm);
+        }
 
-            const matchSearch =
-                !debouncedSearchTerm ||
-                t.description.toLowerCase().includes(searchTermLower) ||
-                t.payee.toLowerCase().includes(searchTermLower) ||
-                t.accountName.toLowerCase().includes(searchTermLower) ||
-                t.amount.toString().includes(searchTermLower);
-
+        // Depois, aplicar os demais filtros
+        return baseTransactions.filter((t) => {
             const matchType = !filters.type || t.type === filters.type;
             const matchAccount =
                 !filters.accountId || t.accountNumber === parseInt(filters.accountId);
@@ -164,11 +166,12 @@ export const useAppLogic = () => {
             const matchPendingReceipt = !filters.pendingReceipt ||
                 t.receiptStatus === ReceiptStatus.HAS_BUT_NOT_ATTACHED;
 
-            return matchSearch && matchType && matchAccount && matchDate && matchPendingReceipt;
+            return matchType && matchAccount && matchDate && matchPendingReceipt;
         });
     }, [
         transactions,
         debouncedSearchTerm,
+        fuzzySearch,
         filters.type,
         filters.accountId,
         filters.startDate,
@@ -295,7 +298,7 @@ export const useAppLogic = () => {
             } else {
                 toast.success('Dados sincronizados!');
             }
-        } catch (error: any) {
+        } catch (error) {
             console.error('Erro ao sincronizar:', error);
             toast.error('Erro ao sincronizar. Tente novamente.');
         } finally {

@@ -342,7 +342,7 @@ class SyncService {
       controlDocRef,
       (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data() as any;
+          const data = docSnap.data() as { lastChange?: { toMillis?: () => number }; userId?: string } | undefined;
           const lastChange = data?.lastChange?.toMillis?.() || 0;
 
           cacheService
