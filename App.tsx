@@ -162,6 +162,7 @@ const AppContent: React.FC = () => {
             transactionToEdit={transactionToEdit}
             accounts={accounts}
             transactions={transactions}
+            userId={user?.uid}
           />
         )}
       </Suspense>

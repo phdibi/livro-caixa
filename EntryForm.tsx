@@ -9,6 +9,8 @@ import {
 } from './types';
 import { generateId } from './utils/common';
 import { parseLocalDate, formatDateString, addMonths } from './utils/formatters';
+import { ReceiptUpload } from './components/Transactions/ReceiptUpload';
+import { UploadResult } from './services/receiptService';
 
 interface EntryFormProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface EntryFormProps {
   transactionToEdit?: Transaction | null;
   accounts: Account[];
   transactions: Transaction[];
+  userId?: string;
 }
 
 type InvoiceItem = {
@@ -39,6 +42,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
   transactionToEdit,
   accounts,
   transactions,
+  userId,
 }) => {
   // OTIMIZADO: useMemo para evitar recriação em cada render
   const defaultAccount = useMemo(() => ({
@@ -62,6 +66,9 @@ const EntryForm: React.FC<EntryFormProps> = ({
     irCategory: IrCategory.NAO_DEDUTIVEL,
     irNotes: '',
     isContaTiti: false,
+    receiptUrl: undefined,
+    receiptFilename: undefined,
+    receiptUploadedAt: undefined,
   }), [defaultAccount]);
 
   const createEmptyItem = useCallback((): InvoiceItem => ({
@@ -818,6 +825,46 @@ const EntryForm: React.FC<EntryFormProps> = ({
                 placeholder="Ex.: nome do prestador, número da nota, vínculo com dependente..."
               />
             </div>
+
+            {/* Upload de comprovante - apenas no modo edição com userId */}
+            {transactionToEdit && userId && (
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                <label className="text-xs text-gray-700 dark:text-gray-300 block mb-2">
+                  Anexar comprovante
+                </label>
+                <ReceiptUpload
+                  transactionId={transactionToEdit.id}
+                  userId={userId}
+                  currentReceiptUrl={transaction.receiptUrl}
+                  currentReceiptFilename={transaction.receiptFilename}
+                  receiptStatus={transaction.receiptStatus}
+                  onUploadComplete={(result: UploadResult) => {
+                    setTransaction((prev) => ({
+                      ...prev,
+                      receiptUrl: result.url,
+                      receiptFilename: result.filename,
+                      receiptUploadedAt: result.uploadedAt,
+                      receiptStatus: ReceiptStatus.ATTACHED,
+                    }));
+                  }}
+                  onDeleteComplete={() => {
+                    setTransaction((prev) => ({
+                      ...prev,
+                      receiptUrl: undefined,
+                      receiptFilename: undefined,
+                      receiptUploadedAt: undefined,
+                      receiptStatus: ReceiptStatus.HAS_BUT_NOT_ATTACHED,
+                    }));
+                  }}
+                  onStatusChange={(status: ReceiptStatus) => {
+                    setTransaction((prev) => ({
+                      ...prev,
+                      receiptStatus: status,
+                    }));
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Parcelamento */}
