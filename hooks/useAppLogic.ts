@@ -488,7 +488,8 @@ export const useAppLogic = () => {
                 toast.success(transactionToEdit ? 'Atualizado!' : 'Salvo!');
             } catch (error) {
                 console.error('Erro ao salvar:', error);
-                toast.error('Erro ao salvar.');
+                const msg = (error as any)?.message || 'Erro desconhecido';
+                toast.error(`Erro ao salvar: ${msg}`);
             }
         },
         [user, transactionToEdit, transactions, toast]

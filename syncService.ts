@@ -20,6 +20,27 @@ import { Transaction, Account, RecurringTransaction } from './types';
 import { cacheService } from './cacheService';
 import { generateId } from './utils/common';
 
+/**
+ * Remove campos undefined de um objeto para evitar erros no Firestore
+ */
+function sanitizeData(data: any): any {
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeData(item));
+  } else if (data !== null && typeof data === 'object') {
+    const newObj: any = {};
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+      if (value !== undefined) {
+        newObj[key] = sanitizeData(value);
+      } else {
+        newObj[key] = null; // Converte undefined para null explicitamente
+      }
+    });
+    return newObj;
+  }
+  return data;
+}
+
 // Contas padrão para novos usuários (mantido igual)
 const initialAccounts: Omit<Account, 'id'>[] = [
   { number: 101, name: 'Sede', type: 'Despesa' },
@@ -397,12 +418,12 @@ class SyncService {
     userId: string
   ): Promise<void> {
     const now = Date.now();
-    const data = {
+    const data = sanitizeData({
       ...transaction,
       userId,
       updatedAt: now,
       createdAt: transaction.createdAt || now
-    };
+    });
 
     await setDoc(doc(db, 'transactions', transaction.id), data);
 
@@ -426,12 +447,12 @@ class SyncService {
     for (const chunk of chunks) {
       const batch = writeBatch(db);
       chunk.forEach((t) => {
-        const data = {
+        const data = sanitizeData({
           ...t,
           userId,
           updatedAt: now,
           createdAt: t.createdAt || now
-        };
+        });
         batch.set(doc(db, 'transactions', t.id), data);
       });
       await batch.commit();
@@ -481,12 +502,12 @@ class SyncService {
     userId: string
   ): Promise<void> {
     const now = Date.now();
-    const data = {
+    const data = sanitizeData({
       ...transaction,
       userId,
       updatedAt: now,
       createdAt: transaction.createdAt || now
-    };
+    });
 
     await setDoc(doc(db, 'recurring_transactions', transaction.id), data);
     await cacheService.saveRecurringTransaction(data, userId);

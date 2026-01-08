@@ -60,7 +60,18 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
           setUploadProgress((prev) => Math.min(prev + 10, 90));
         }, 100);
 
-        const result = await uploadReceipt(file, userId, transactionId);
+        // Timeout de 30 segundos para evitar travamento eterno
+        const uploadPromise = uploadReceipt(file, userId, transactionId);
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject({
+              code: 'upload-timeout',
+              message: 'O envio demorou muito. Verifique sua conexão.'
+            });
+          }, 30000);
+        });
+
+        const result = await Promise.race([uploadPromise, timeoutPromise]);
 
         clearInterval(progressInterval);
         setUploadProgress(100);
@@ -73,7 +84,12 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
           setUploadProgress(0);
         }, 500);
       } catch (err) {
+        // Limpar intervalo em caso de erro
+        // @ts-ignore
+        if (typeof progressInterval !== 'undefined') clearInterval(progressInterval);
+
         const uploadError = err as UploadError;
+        console.error('Erro upload:', err);
         setError(uploadError.message || 'Erro ao enviar arquivo');
       } finally {
         setIsUploading(false);
