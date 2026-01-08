@@ -458,7 +458,9 @@ export const useAppLogic = () => {
                             });
                         }
                     } else {
-                        transactionsToSave.push({ ...transaction, id: generateId() });
+                        // Se já vier com ID (gerado pelo form para upload), usa ele
+                        const idToUse = transaction.id || generateId();
+                        transactionsToSave.push({ ...transaction, id: idToUse });
                     }
                 }
 
