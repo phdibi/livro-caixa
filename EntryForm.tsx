@@ -836,8 +836,8 @@ const EntryForm: React.FC<EntryFormProps> = ({
               />
             </div>
 
-            {/* Upload de comprovante - Disponível sempre que houver userId */}
-            {userId && !isInvoiceMode && (
+            {/* Upload de comprovante - Disponível sempre que houver userId (inclusive no modo nota fiscal) */}
+            {userId && (
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <label className="text-xs text-gray-700 dark:text-gray-300 block mb-2">
                   Anexar comprovante

@@ -54,12 +54,12 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
       setIsUploading(true);
       setUploadProgress(0);
 
-      try {
-        // Simular progresso (Firebase não fornece progresso real para uploadBytes)
-        const progressInterval = setInterval(() => {
-          setUploadProgress((prev) => Math.min(prev + 10, 90));
-        }, 100);
+      // Simular progresso (Firebase não fornece progresso real para uploadBytes)
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => Math.min(prev + 10, 90));
+      }, 100);
 
+      try {
         const result = await uploadReceipt(file, userId, transactionId);
 
         clearInterval(progressInterval);
@@ -73,6 +73,8 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
           setUploadProgress(0);
         }, 500);
       } catch (err) {
+        clearInterval(progressInterval);
+        setUploadProgress(0);
         const uploadError = err as UploadError;
         setError(uploadError.message || 'Erro ao enviar arquivo');
       } finally {
