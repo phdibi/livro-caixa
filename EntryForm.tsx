@@ -86,6 +86,9 @@ const EntryForm: React.FC<EntryFormProps> = ({
   const [firstInstallmentDate, setFirstInstallmentDate] = useState(getTodayString());
   const [updateScope, setUpdateScope] = useState<'single' | 'future'>('single');
 
+  // ID persistente para o formulário (usado para uploads antes de salvar)
+  const [currentId] = useState(transactionToEdit?.id || generateId());
+
   const [isInvoiceMode, setIsInvoiceMode] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([createEmptyItem()]);
 
@@ -100,6 +103,13 @@ const EntryForm: React.FC<EntryFormProps> = ({
         ...getInitialState(),
         ...transactionToEdit,
       };
+
+      // CORREÇÃO: Se for edição de recorrente (sem unitValue/quantity),
+      // ajustar para não zerar o total
+      if ((!merged.unitValue || merged.unitValue === 0) && merged.amount > 0) {
+        merged.quantity = 1;
+        merged.unitValue = merged.amount;
+      }
 
       if (transactionToEdit.seriesId) {
         const seriesTransactions = transactions.filter(
@@ -367,7 +377,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
     // CORREÇÃO: Garantir que a data está correta antes de salvar
     const transactionToSave: Transaction = {
       ...transaction,
-      id: transactionToEdit?.id || generateId(),
+      id: currentId, // Usa o ID gerado na inicialização do form
       date: transaction.date, // A data já está no formato YYYY-MM-DD
     };
 
@@ -826,14 +836,14 @@ const EntryForm: React.FC<EntryFormProps> = ({
               />
             </div>
 
-            {/* Upload de comprovante - apenas no modo edição com userId */}
-            {transactionToEdit && userId && (
+            {/* Upload de comprovante - Disponível sempre que houver userId */}
+            {userId && !isInvoiceMode && (
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <label className="text-xs text-gray-700 dark:text-gray-300 block mb-2">
                   Anexar comprovante
                 </label>
                 <ReceiptUpload
-                  transactionId={transactionToEdit.id}
+                  transactionId={currentId}
                   userId={userId}
                   currentReceiptUrl={transaction.receiptUrl}
                   currentReceiptFilename={transaction.receiptFilename}
