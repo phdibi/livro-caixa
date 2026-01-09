@@ -44,6 +44,13 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
     async (file: File) => {
       setError(null);
 
+      // Validar parâmetros obrigatórios
+      if (!userId || !transactionId) {
+        setError('Erro interno: ID do usuário ou transação não disponível.');
+        console.error('Upload falhou: userId ou transactionId não definido', { userId, transactionId });
+        return;
+      }
+
       // Validar arquivo
       const validationError = validateFile(file);
       if (validationError) {
@@ -60,7 +67,9 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({
       }, 100);
 
       try {
+        console.log('Iniciando upload:', { fileName: file.name, userId, transactionId });
         const result = await uploadReceipt(file, userId, transactionId);
+        console.log('Upload concluído com sucesso:', result);
 
         clearInterval(progressInterval);
         setUploadProgress(100);

@@ -113,11 +113,33 @@ export async function uploadReceipt(
       filename: file.name,
       uploadedAt: Date.now(),
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Erro ao fazer upload:', error);
+
+    // Extrair mensagem de erro mais detalhada do Firebase
+    let errorMessage = 'Falha ao enviar arquivo. Tente novamente.';
+
+    if (error && typeof error === 'object') {
+      const firebaseError = error as { code?: string; message?: string };
+
+      if (firebaseError.code === 'storage/unauthorized') {
+        errorMessage = 'Sem permissão para fazer upload. Verifique as regras do Firebase Storage.';
+      } else if (firebaseError.code === 'storage/canceled') {
+        errorMessage = 'Upload cancelado.';
+      } else if (firebaseError.code === 'storage/unknown') {
+        errorMessage = 'Erro desconhecido no upload. Verifique sua conexão.';
+      } else if (firebaseError.code === 'storage/quota-exceeded') {
+        errorMessage = 'Cota de armazenamento excedida.';
+      } else if (firebaseError.code === 'storage/unauthenticated') {
+        errorMessage = 'Usuário não autenticado. Faça login novamente.';
+      } else if (firebaseError.message) {
+        errorMessage = firebaseError.message;
+      }
+    }
+
     throw {
       code: 'upload-failed',
-      message: 'Falha ao enviar arquivo. Tente novamente.',
+      message: errorMessage,
     } as UploadError;
   }
 }
